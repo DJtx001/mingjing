@@ -30,10 +30,14 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.llm.provider import provider
-        provider._init_cloud()
-        logger.info("warmup: LLM 客户端已初始化")
+        llm = provider._init_cloud()
+        # 关键：_init_cloud 只创建对象，不建立 TCP 连接。
+        # 必须真正发一次请求，httpx 连接池才会建好 DNS+TCP+TLS，
+        # 这样用户的第一次对话才能复用连接，省去 ~500ms 握手开销。
+        llm.invoke([{"role": "user", "content": "hi"}])
+        logger.info("warmup: LLM 连接已建立（httpx 连接池就绪）")
     except Exception as e:
-        logger.warning("warmup: LLM 客户端预热失败（不影响启动）: %s", e)
+        logger.warning("warmup: LLM 预热失败（不影响启动）: %s", e)
 
     yield
 
