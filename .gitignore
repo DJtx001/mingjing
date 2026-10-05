@@ -1,0 +1,16 @@
+# 密钥与环境配置（严禁提交）
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 前端
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/

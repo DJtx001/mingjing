@@ -1,0 +1,34 @@
+"""FastAPI 依赖：从请求头解析当前登录用户。
+
+用法：在任意接口参数里写  user: dict = Depends(get_current_user)
+FastAPI 会在接口执行前自动解析，失败直接返回 401，接口代码不会被调用。
+"""
+from fastapi import Header, HTTPException
+
+from app.core.security import decode_access_token
+
+
+def get_current_user(authorization: str = Header(default="")) -> dict:
+    """要求请求头形如：Authorization: Bearer eyJhbGciOi…
+    解析成功返回用户字典；缺头/格式错/过期/伪造一律 401。
+    """
+    # 没带头，或不是 Bearer 方案
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401,
+                            detail={"code": "AUTH_001", "message": "未登录或登录已失效"})
+
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        payload = decode_access_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401,
+                            detail={"code": "AUTH_001", "message": str(e)})
+
+    # 整理成业务里统一的用户结构返回（JWT 载荷里 sub=user_id）
+    return {
+        "user_id": payload["sub"],
+        "username": payload.get("username", ""),
+        "name": payload.get("name", ""),
+        "role": payload.get("role", ""),
+        "org": payload.get("org", ""),
+    }
