@@ -124,15 +124,6 @@ npm run dev      # 开发模式，访问 http://localhost:5173
 npm run build    # 构建后由后端托管，访问 http://localhost:8000
 ```
 
-## 测试账号
-
-| 角色 | 用户名 | 密码 |
-|---|---|---|
-| 受理员 | zhangming | 123456 |
-| 管理员 | admin | 123456 |
-
-> 密码经 bcrypt 哈希存储，数据库中不存明文。
-
 ## 安全设计
 
 - 密码 bcrypt（cost=12）单向哈希，随机盐
