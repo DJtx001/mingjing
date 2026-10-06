@@ -1,5 +1,11 @@
+import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# 支持两种启动方式：python -m app.main（推荐）/ python app/main.py
+# 直接运行脚本时 sys.path[0] 是 app/ 目录，手动把项目根加回来才能 import app 包
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 
-from app.api import cases, assist, auth
+from app.api import cases, assist, auth, kb, logs
 
 logger = logging.getLogger("warmup")
 
@@ -31,13 +37,22 @@ async def lifespan(app: FastAPI):
     try:
         from app.llm.provider import provider
         llm = provider._init_cloud()
+
         # 关键：_init_cloud 只创建对象，不建立 TCP 连接。
         # 必须真正发一次请求，httpx 连接池才会建好 DNS+TCP+TLS，
         # 这样用户的第一次对话才能复用连接，省去 ~500ms 握手开销。
-        llm.invoke([{"role": "user", "content": "hi"}])
-        logger.info("warmup: LLM 连接已建立（httpx 连接池就绪）")
+        # 用 daemon 线程后台预热：不阻塞启动（网络再慢也是秒起）；
+        # daemon 线程不阻止进程退出（reload 时不会被挂起的 HTTP 请求拖住）。
+        def _warmup_call():
+            try:
+                llm.invoke([{"role": "user", "content": "hi"}])
+                logger.info("warmup: LLM 连接已建立（httpx 连接池就绪）")
+            except Exception as e:
+                logger.warning("warmup: LLM 预热失败（不影响使用，首次对话时再建连）: %s", e)
+
+        threading.Thread(target=_warmup_call, daemon=True).start()
     except Exception as e:
-        logger.warning("warmup: LLM 预热失败（不影响启动）: %s", e)
+        logger.warning("warmup: LLM 预热初始化失败: %s", e)
 
     yield
 
@@ -66,6 +81,20 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(assist.router)
+app.include_router(kb.router)
+app.include_router(logs.router)
+
+# 知识库配置表幂等建表（kb_rule/kb_schema/kb_prompt；法条/案例走 OSS+Chroma，不建表）
+try:
+    kb.init_tables()
+except Exception as _e:
+    logger.warning("kb 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# 操作日志表幂等建表（audit_log）
+try:
+    logs.init_tables()
+except Exception as _e:
+    logger.warning("logs 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
 
 # 前端为 Vite 工程（frontend/）：生产产物在 frontend/dist，由后端同源托管
 # 必须放在所有 API 路由注册之后；dist 不存在时（未执行 npm run build）给出提示
@@ -79,4 +108,7 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    # timeout_graceful_shutdown=3：重启/重载时最多等 3 秒优雅关闭，
+    # 防止旧 worker 因挂起的长连接一直不退出、热重载换不上新代码
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True,
+                timeout_graceful_shutdown=3)

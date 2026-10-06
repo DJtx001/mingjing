@@ -40,4 +40,12 @@ class Config:
         "decode_responses": True,   # 自动 bytes→str
     }
 
+    # 阿里云 OSS（对象存储：法条原文备份、附件、导出文书）
+    OSS = {
+        "access_key_id": os.getenv("OSS_ACCESS_KEY_ID", ""),
+        "access_key_secret": os.getenv("OSS_ACCESS_KEY_SECRET", ""),
+        "endpoint": os.getenv("OSS_ENDPOINT", "oss-cn-beijing.aliyuncs.com"),
+        "bucket": os.getenv("OSS_BUCKET", "mingjing-01"),
+    }
+
 config = Config()

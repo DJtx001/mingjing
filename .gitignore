@@ -1,5 +1,6 @@
 # 密钥与环境配置（严禁提交）
 .env
+账号密码清单.md
 
 # Python
 __pycache__/
@@ -14,3 +15,6 @@ frontend/dist/
 # IDE
 .idea/
 .vscode/
+
+# 临时资源与脚本（非项目产物）
+scripts/

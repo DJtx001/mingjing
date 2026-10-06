@@ -1,10 +1,5 @@
 <template>
   <div class="login-page">
-    <!-- 背景装饰 -->
-    <div class="bg-deco deco-1"></div>
-    <div class="bg-deco deco-2"></div>
-    <div class="bg-deco deco-3"></div>
-
     <div class="login-card">
       <!-- 左侧品牌区 -->
       <div class="brand-panel">
@@ -44,7 +39,7 @@
           </el-form-item>
         </el-form>
 
-        <div class="demo-tip">演示账号：zhangming / 123456（受理员），admin 或 lisi / admin123（管理员）</div>
+        <div class="demo-tip">演示账号：lisi 密码：123456（普通用户，仅可查看与上传知识库）如有问题联系管理员3112028466@qq.com</div>
       </div>
     </div>
   </div>
@@ -52,7 +47,6 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { login } from '../api/auth.js'
 
 const emit = defineEmits(['login-success'])
@@ -83,29 +77,24 @@ async function handleLogin() {
   height: 100vh;
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #0e1c38 0%, #1d3a6e 55%, #2b5fad 100%);
+  justify-content: flex-end;                /* 卡片右置：左侧与中部让给背景画面 */
+  padding-right: clamp(12px, 1.5vw, 30px);  /* 卡片再次贴右 */
+  /* 天平背景图：恢复全屏铺满（cover），焦点保留微偏左 */
+  background:
+    url('../assets/login-bg.jpg') 55% center / cover no-repeat,
+    linear-gradient(135deg, #0e1c38 0%, #1d3a6e 55%, #2b5fad 100%);
   position: relative;
   overflow: hidden;
 }
-.bg-deco {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.045);
-  pointer-events: none;
-}
-.deco-1 { width: 560px; height: 560px; top: -180px; left: -140px; }
-.deco-2 { width: 420px; height: 420px; bottom: -140px; right: -100px; }
-.deco-3 { width: 220px; height: 220px; bottom: 120px; left: 22%; background: rgba(255, 255, 255, 0.03); }
 
 .login-card {
   display: flex;
   width: 860px;
   max-width: 92vw;
   min-height: 520px;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 24px 70px rgba(5, 15, 35, 0.5);
   position: relative;
   z-index: 1;
 }
@@ -116,8 +105,8 @@ async function handleLogin() {
   padding: 52px 44px;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(160deg, rgba(43, 95, 173, 0.35) 0%, rgba(14, 28, 56, 0.55) 100%);
-  backdrop-filter: blur(4px);
+  /* 深蓝实底：完全不透明，与顶栏/主界面同族 */
+  background: linear-gradient(160deg, #16294a 0%, #0b1a33 100%);
   color: #fff;
 }
 .brand-head { display: flex; align-items: center; gap: 14px; }
@@ -129,9 +118,39 @@ async function handleLogin() {
   display: flex; align-items: center; justify-content: center;
   font-size: 28px;
 }
-.brand-name h1 { margin: 0; font-size: 30px; letter-spacing: 6px; }
+/* 「明镜」艺术字：楷体 + 金色渐变 + 光晕，呼应「明镜高悬」 */
+.brand-name h1 {
+  margin: 0;
+  font-size: 44px;
+  letter-spacing: 12px;
+  text-indent: 12px;              /* 补偿字距造成的右侧空隙，视觉居中 */
+  font-family: "STKaiti", "KaiTi", "楷体", serif;
+  font-weight: 700;
+  background: linear-gradient(180deg, #ffffff 15%, #f0dfae 55%, #d9b96a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 2px 12px rgba(240, 223, 174, 0.4));
+}
+.brand-name h1::after {
+  content: '';
+  display: block;
+  width: 76px;
+  height: 2px;
+  margin-top: 16px;
+  text-indent: 0;
+  background: linear-gradient(90deg, #d9b96a, rgba(217, 185, 106, 0));
+}
 .brand-name p { margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; color: rgba(255, 255, 255, 0.75); }
-.slogan { margin: 44px 0 26px; font-size: 17px; line-height: 1.8; color: rgba(255, 255, 255, 0.92); }
+.slogan {
+  margin: 44px 0 26px;
+  font-size: 17px;
+  line-height: 1.8;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: "STZhongsong", "SimSun", "宋体", serif;
+}
 .features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; font-size: 13.5px; color: rgba(255, 255, 255, 0.8); }
 .features li { display: flex; align-items: center; gap: 10px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: #7db2ff; box-shadow: 0 0 8px #7db2ff; flex: none; }
@@ -148,7 +167,16 @@ async function handleLogin() {
 }
 .form-panel h2 { margin: 0 0 8px; font-size: 24px; color: #1f2d3d; }
 .form-tip { margin: 0 0 30px; font-size: 13px; color: #909399; }
-.login-btn { width: 100%; font-size: 15px; letter-spacing: 8px; }
+.login-btn {
+  width: 100%; font-size: 15px; letter-spacing: 8px; border: none;
+  background-image: linear-gradient(135deg, #2b5fad 0%, #4a80d4 100%);
+  box-shadow: 0 6px 20px rgba(43, 95, 173, 0.38);
+  transition: all 0.25s;
+}
+.login-btn:hover {
+  box-shadow: 0 9px 26px rgba(43, 95, 173, 0.5);
+  transform: translateY(-1px);
+}
 .demo-tip {
   margin-top: 8px;
   padding: 9px 12px;
@@ -159,6 +187,10 @@ async function handleLogin() {
   text-align: center;
 }
 
+/* 窄屏：卡片回居中（背景图仍铺满） */
+@media (max-width: 1180px) {
+  .login-page { justify-content: center; padding-right: 0; }
+}
 @media (max-width: 760px) {
   .brand-panel { display: none; }
   .form-panel { padding: 40px 32px; }

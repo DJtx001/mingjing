@@ -3,19 +3,20 @@
 流程：POST /auth/login 校验账号密码 → 签发 JWT 返回；
       GET /auth/me 凭请求头里的 JWT 返回当前用户。
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.config import config
 from app.core.db import MySQLClient
 from app.core.deps import get_current_user
 from app.core.security import verify_password, create_access_token
 from app.schemas.auth import LoginRequest, LoginResponse, UserInfo
+from app.services import audit_service
 
 router = APIRouter(prefix="/auth", tags=["A-认证"])
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request):
     """账号密码登录。成功返回 JWT，前端存 localStorage。"""
     # 1. 查用户（按账号）。建库后把这里换成查 user 表的 SQL：
     #    SELECT user_id, username, password_hash, name, role, org, status
@@ -31,8 +32,12 @@ async def login(body: LoginRequest):
             detail={"code": "AUTH_001", "message": "账号或密码错误"},
         )
 
-    # 3. 生成 JWT 并返回
+    # 3. 生成 JWT
     access = create_access_token(user)
+
+    # 4. 记录登录审计（audit_service 内部降级：写失败不影响登录）
+    audit_service.record(user, "login", ip=request.client.host if request.client else "")
+
     return LoginResponse(
         access_token=access,
         expires_in=config.ACCESS_EXPIRE_HOURS * 3600,

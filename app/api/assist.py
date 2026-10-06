@@ -105,7 +105,11 @@ async def chat(body: ChatRequest, user: dict = Depends(get_current_user)):
     return StreamingResponse(
         _sse_stream(session_id, body),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用代理服务器缓冲（Vite proxy / nginx）
+        },
     )
 
 

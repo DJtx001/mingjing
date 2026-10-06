@@ -18,7 +18,21 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://localhost:8000', changeOrigin: true },
       '/cases': { target: 'http://localhost:8000', changeOrigin: true },
-      '/assist': { target: 'http://localhost:8000', changeOrigin: true },
+      '/assist': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        // SSE 流式关键：禁用压缩和缓冲，让代理逐 chunk 透传
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              // 删除 content-length，让浏览器按 chunk 读取
+              delete proxyRes.headers['content-length']
+              delete proxyRes.headers['content-encoding']
+            }
+          })
+        },
+      },
+      '/admin': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
   build: {

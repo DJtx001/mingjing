@@ -3,7 +3,7 @@
 用法：在任意接口参数里写  user: dict = Depends(get_current_user)
 FastAPI 会在接口执行前自动解析，失败直接返回 401，接口代码不会被调用。
 """
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from app.core.security import decode_access_token
 
@@ -32,3 +32,15 @@ def get_current_user(authorization: str = Header(default="")) -> dict:
         "role": payload.get("role", ""),
         "org": payload.get("org", ""),
     }
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """管理员专用依赖：在登录校验之上再加角色校验。
+
+    用法：接口参数写 user: dict = Depends(require_admin)。
+    非 admin 角色一律 403，前端统一提示"你没有权限"。
+    """
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403,
+                            detail={"code": "AUTHZ_002", "message": "你没有权限，请联系管理员 3112028466@qq.com"})
+    return user

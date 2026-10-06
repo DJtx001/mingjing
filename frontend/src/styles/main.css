@@ -1,33 +1,218 @@
-:root { --primary: #2b5fad; }
+/* ===== 品牌色板 + Element Plus 主题统一 ===== */
+:root {
+  --primary: #2b5fad;
+  --primary-dark: #224c8a;
+  --primary-deep: #16345e;
+  --bg-page: #f1f4f9;
+  --border: #e6eaf2;
+  --radius: 12px;
+  --shadow-card: 0 2px 14px rgba(30, 50, 90, 0.07);
+
+  /* Element 主色及其衍生色 = 品牌蓝,开关/选中态/tab 下划线等全部跟随 */
+  --el-color-primary: #2b5fad;
+  --el-color-primary-light-3: #6b8fc6;
+  --el-color-primary-light-5: #95afd6;
+  --el-color-primary-light-7: #bfcfe6;
+  --el-color-primary-light-8: #d5dfef;
+  --el-color-primary-light-9: #eaeff7;
+  --el-color-primary-dark-2: #224c8a;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; font-size: 13px; background: #f5f7fa; font-family: "Microsoft YaHei", sans-serif; }
+body {
+  margin: 0;
+  font-size: 14px;
+  color: #2c3a4f;
+  background: var(--bg-page);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ccd6e4; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #b0bfd4; }
+
+/* ===== 工作台布局 ===== */
 .layout { display: flex; flex-direction: column; height: 100vh; }
-.topbar { height: 48px; background: #fff; border-bottom: 1px solid #e4e7ed; display: flex; align-items: center; padding: 0 20px; }
-.topbar .brand { font-size: 15px; font-weight: 600; flex: 1; }
-.topbar .user { color: #606266; margin-left: auto; }
-.topbar .logout { margin-left: 16px; color: #409eff; cursor: pointer; }
-.topbar .logout:hover { text-decoration: underline; }
+.topbar {
+  height: 68px;
+  background: linear-gradient(135deg, #142f57 0%, #1d3a6e 60%, #24509b 100%);
+  display: flex; align-items: center; padding: 0 28px;
+  color: #fff;
+  box-shadow: 0 2px 14px rgba(16, 36, 72, 0.28);
+  position: relative; z-index: 10;
+}
+.topbar .brand { flex: 1; display: flex; align-items: baseline; gap: 16px; position: relative; }
+/* 品牌区金雾光晕：让「明镜」在顶栏里发光、一眼聚焦 */
+.topbar .brand::before {
+  content: '';
+  position: absolute;
+  left: -16px; top: 50%;
+  transform: translateY(-50%);
+  width: 220px; height: 52px;
+  background: radial-gradient(ellipse at center, rgba(217, 185, 106, 0.22), transparent 70%);
+  pointer-events: none;
+}
+/* 顶栏「明镜」艺术字：与登录页同款金色渐变楷体 */
+.topbar .brand .brand-name {
+  position: relative;
+  font-family: "STKaiti", "KaiTi", "楷体", serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 12px;
+  text-indent: 12px;              /* 补偿字距造成的右侧空隙，视觉居中 */
+  background: linear-gradient(180deg, #ffffff 20%, #f0dfae 58%, #d9b96a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 2px 10px rgba(240, 223, 174, 0.45));
+}
+.topbar .brand .brand-sub {
+  position: relative;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: rgba(255, 255, 255, 0.68);
+}
+.topbar .user { display: flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, 0.85); font-size: 13px; }
+/* 用户首字头像：金色圆底，与品牌金字呼应 */
+.topbar .user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #1d3a6e;
+  background: linear-gradient(135deg, #f0dfae, #d9b96a);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.topbar .logout {
+  margin-left: 18px; padding: 6px 16px; font-size: 12.5px;
+  color: #fff; border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 15px; cursor: pointer;
+  transition: all 0.2s;
+}
+.topbar .logout:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+}
+
 .body { flex: 1; display: flex; overflow: hidden; }
-.sidebar { width: 200px; background: #fff; border-right: 1px solid #e4e7ed; padding: 8px 0; }
-.menu-item { padding: 11px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #303133; }
-.menu-item:hover { background: #f0f5fc; }
-.menu-item.active { color: var(--primary); background: #eaf1fa; border-right: 3px solid var(--primary); font-weight: 600; }
+/* 深色侧栏：与顶栏同族的深蓝，形成 L 型一体的框架感 */
+.sidebar {
+  width: 224px;
+  background: linear-gradient(180deg, #17335c 0%, #122a4d 100%);
+  padding: 16px 12px; display: flex; flex-direction: column;
+}
+.menu-item {
+  padding: 9px 12px; border-radius: 10px; margin-bottom: 4px;
+  cursor: pointer; display: flex; align-items: center; gap: 10px;
+  color: rgba(255, 255, 255, 0.78); font-size: 13.5px;
+  transition: all 0.18s;
+}
+/* 图标容器：每个菜单项一个圆角小方块，提升层次感 */
+.menu-icon {
+  width: 28px; height: 28px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; background: rgba(255, 255, 255, 0.09);
+  transition: all 0.18s;
+}
+.menu-item:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.menu-item:hover .menu-icon { background: rgba(255, 255, 255, 0.16); }
+.menu-item.active {
+  color: #fff; font-weight: 600;
+  background: linear-gradient(135deg, rgba(43, 95, 173, 0.95) 0%, rgba(74, 128, 212, 0.9) 100%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+.menu-item.active .menu-icon { background: rgba(255, 255, 255, 0.2); }
 .menu-item .badge { margin-left: auto; }
-.content { flex: 1; padding: 16px 20px; overflow: auto; }
-.card { background: #fff; border-radius: 6px; padding: 16px; }
-/* AI 助手悬浮按钮（页⑥ 全局组件） */
-.ai-fab { position: fixed; right: 24px; bottom: 24px; z-index: 1000; }
-/* 抽屉内对话 */
-.drawer-alert { margin-bottom: 12px; }
-.chat-list { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 12px; }
-.msg { display: flex; flex-direction: column; gap: 6px; }
-.msg.user { align-items: flex-end; }
-.bubble { padding: 10px 14px; border-radius: 6px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-width: 100%; }
-.msg.user .bubble { background: var(--primary); color: #fff; }
-.msg.assistant .bubble { background: #f5f7fa; border: 1px solid #e4e7ed; }
-.cite-card { background: #f0f5fc; border-left: 3px solid var(--primary); padding: 8px 10px; border-radius: 0 6px 6px 0; font-size: 12px; color: #4a5b76; display: flex; flex-direction: column; gap: 4px; }
-.cite-card .actions { display: flex; gap: 8px; }
-.quick-qs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.streaming::after { content: '▌'; animation: blink 1s infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-.el-button--primary { --el-button-bg-color: var(--primary); --el-button-border-color: var(--primary); }
+/* 深色侧栏上给徽标加白色描边，提升对比度 */
+.menu-item .el-badge__content { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); border: none; }
+.content { flex: 1; padding: 24px 28px; overflow: auto; }
+/* ===== 内容区页头：页面大标题 + 说明，撑起板块层次 ===== */
+.page-head { margin-bottom: 16px; }
+.page-head h2 { margin: 0; font-size: 20px; font-weight: 700; color: #20304a; letter-spacing: 1px; }
+.page-head .page-desc { margin: 5px 0 0; font-size: 12.5px; color: #8a97ac; letter-spacing: 0.3px; }
+.card {
+  background: #fff; border-radius: var(--radius); padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+/* ===== 表格观感 ===== */
+.el-table {
+  --el-table-header-bg-color: #f4f7fc;
+  --el-table-header-text-color: #33465f;
+  --el-table-row-hover-bg-color: #f5f8fd;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;   /* 数字等宽，列对齐更整齐 */
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.6px;
+}
+.el-table .el-table__cell { font-size: 13px; }
+.el-table__empty-text { color: #a8b3c4; font-size: 13px; }
+.el-alert { border-radius: 10px; }
+/* tab 选中态加粗，层次更清楚 */
+.el-tabs__item { font-weight: 500; }
+.el-tabs__item.is-active { font-weight: 700; }
+
+/* ===== 气泡确认（el-popconfirm）统一美化：按钮加大、圆角、留白舒适 ===== */
+.el-popconfirm.el-popper {
+  padding: 14px 16px 12px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 28px rgba(31, 45, 61, 0.16) !important;
+  border: 1px solid #eef0f4;
+}
+.el-popconfirm__main {
+  font-size: 13.5px;
+  color: #303133;
+  align-items: flex-start;
+}
+.el-popconfirm__main .el-icon {
+  font-size: 17px;
+  margin-top: 1px;
+}
+.el-popconfirm__action {
+  margin-top: 14px !important;
+  gap: 10px;
+}
+.el-popconfirm__action .el-button {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  min-width: 64px;
+}
+/* 确认/删除主按钮加投影，更醒目 */
+.el-popconfirm__action .el-button--danger,
+.el-popconfirm__action .el-button--primary {
+  box-shadow: 0 3px 10px rgba(43, 95, 173, 0.22);
+}
+.el-popconfirm__action .el-button--danger {
+  box-shadow: 0 3px 10px rgba(245, 108, 108, 0.25);
+}
+
+/* ===== 居中确认框（el-message-box）同步美化，防止个别地方仍在使用 ===== */
+.el-message-box {
+  border-radius: 14px;
+  padding: 22px 24px 18px;
+  max-width: 420px;
+}
+.el-message-box__btns {
+  padding-top: 8px;
+}
+.el-message-box__btns .el-button {
+  padding: 9px 22px;
+  font-size: 13.5px;
+  font-weight: 500;
+  border-radius: 9px;
+  min-width: 84px;
+}
+.el-message-box__btns .el-button--primary {
+  box-shadow: 0 3px 10px rgba(43, 95, 173, 0.25);
+}

@@ -9,6 +9,8 @@
 | 后端 | Python 3.14 / FastAPI / Uvicorn |
 | 前端 | Vue 3 / Vite / Element Plus |
 | 数据库 | MySQL 8（真相源）+ Redis（热缓存） |
+| 对象存储 | 阿里云 OSS（法条/案例原文、附件、导出文书） |
+| 向量库 | Chroma（待接入，BGE-M3 稠密 + BM25 稀疏双路召回） |
 | LLM | DeepSeek API（主）/ Ollama 本地模型（兜底降级） |
 | 鉴权 | JWT (HS256) + bcrypt 密码哈希 |
 | 检索 | BM25 + jieba 分词（RAG 基础组件） |
@@ -20,6 +22,9 @@
 - **会话管理**：历史会话列表、切换、删除，越权防护
 - **登录鉴权**：JWT 单 token 方案，基于角色的接口隔离
 - **采纳回流**：AI 回答的引用内容可一键采纳到案件文档
+- **知识库管理**：法条/案例文件上传到 OSS，支持 PDF/文本在线预览，规则/Schema/提示词可视化配置
+- **操作日志**：关键操作审计记录与查询
+- **可拖动 AI 入口**：右下角悬浮胶囊按钮，支持自由拖动并记忆位置
 
 ## 架构设计
 
@@ -57,26 +62,30 @@ mingjing-intake/
 │   ├── api/                 # 接口层
 │   │   ├── auth.py          #   登录 / 当前用户
 │   │   ├── cases.py         #   案件列表
-│   │   └── assist.py        #   AI 助手 5 接口（chat 为 SSE 流式）
+│   │   ├── assist.py        #   AI 助手（chat 为 SSE 流式）
+│   │   ├── kb.py            #   知识库管理（法条/案例/规则/Schema/提示词 + OSS 文件）
+│   │   └── logs.py          #   操作日志查询
 │   ├── core/                # 基础能力
-│   │   ├── config.py        #   环境配置读取
+│   │   ├── config.py        #   环境配置读取（含 OSS）
 │   │   ├── db.py            #   MySQL 连接封装
 │   │   ├── redis.py         #   Redis 连接池
 │   │   ├── security.py      #   bcrypt + JWT
 │   │   ├── deps.py          #   登录态依赖
 │   │   └── id_gen.py        #   会话 ID 生成
 │   ├── services/
-│   │   └── session_service.py  # 会话记忆服务（Redis+MySQL 双写、降级、回放）
+│   │   ├── session_service.py  # 会话记忆服务（Redis+MySQL 双写、降级、回放）
+│   │   ├── oss_service.py      # 阿里云 OSS 上传/下载/删除/列表
+│   │   └── audit_service.py    # 操作日志审计记录
 │   ├── llm/
 │   │   └── provider.py      # LLM 网关（云端→本地降级链）
 │   └── schemas/             # Pydantic 请求/响应模型
 │
 ├── frontend/                # Vue3 + Vite 前端
 │   ├── src/
-│   │   ├── api/             # 接口封装（auth / cases / assist）
+│   │   ├── api/             # 接口封装（auth / cases / assist / kb / logs）
 │   │   ├── components/
-│   │   │   └── AiAssistantDrawer.vue  # AI 助手悬浮抽屉（SSE 流式 + 会话列表）
-│   │   ├── views/           # 登录页 / 案件列表页
+│   │   │   └── AiAssistantDrawer.vue  # AI 助手悬浮抽屉（SSE 流式 + 可拖动入口 + 会话列表）
+│   │   ├── views/           # 登录页 / 案件列表页 / 知识库管理页 / 操作日志页
 │   │   └── App.vue
 │   └── dist/                # 构建产物，由后端同源托管
 │
@@ -107,6 +116,10 @@ pip install -r requirements.txt
 # 配置环境变量
 cp .env.example .env
 # 编辑 .env，填入 MySQL/Redis/LLM API Key 等配置
+# OSS 配置（可选，用于法条/案例文件存储）：
+#   OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
+#   OSS_ENDPOINT=oss-cn-beijing.aliyuncs.com
+#   OSS_BUCKET=your-bucket-name
 
 # 建库建表（执行 app 对应的 SQL，见说明文档）
 
