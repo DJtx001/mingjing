@@ -78,7 +78,8 @@ def _query_messages_from_db(session_id: str) -> list[dict]:
                 msg["reply_id"] = row["reply_id"]
             citations = row.get("citations")
             if citations is not None:
-                msg["citations"] = citations
+                # pymysql 对 JSON 列返回字符串，需还原为对象再给前端
+                msg["citations"] = json.loads(citations) if isinstance(citations, str) else citations
             messages.append(msg)
         # MySQL 按 id DESC 取的（最新在前），反转成旧→新
         messages.reverse()
@@ -239,7 +240,8 @@ def check_owner(session_id: str, user_id: str) -> bool:
 
 
 def append_message(session_id: str, role: str, content: str,
-                   reply_id: str | None = None, citations: list | None = None) -> None:
+                   reply_id: str | None = None, citations: list | None = None,
+                   context: dict | None = None) -> None:
     """追加一条消息到会话。
 
     双写：
@@ -250,6 +252,7 @@ def append_message(session_id: str, role: str, content: str,
     :param content: 消息文本
     :param reply_id: 仅 assistant 消息有，采纳回流时定位用
     :param citations: 仅 assistant 消息有，引用卡片列表
+    :param context: 仅 assistant 消息有，运行元数据 {model, provider, latency_ms, no_evidence}（统计源）
     """
     msg = {
         "role": role,
@@ -277,9 +280,11 @@ def append_message(session_id: str, role: str, content: str,
         db = MySQLClient()
         try:
             db.execute(
-                "INSERT INTO assist_message (session_id, role, content, reply_id, citations) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (session_id, role, content, reply_id, json.dumps(citations or [], ensure_ascii=False)),
+                "INSERT INTO assist_message (session_id, role, content, reply_id, citations, context) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (session_id, role, content, reply_id,
+                 json.dumps(citations or [], ensure_ascii=False),
+                 json.dumps(context, ensure_ascii=False) if context else None),
             )
             db.commit()
         finally:
@@ -325,15 +330,26 @@ def get_messages(session_id: str) -> list[dict]:
 
 
 def delete_session(session_id: str) -> None:
-    """删除会话。
+    """删除会话（三层清干净，不留僵尸）。
 
-    双删：
-      1. Redis：删会话的两个 key（用户索引里的条目由 TTL 自然过期）
-      2. MySQL：删 assist_session + assist_message（外键 CASCADE 自动删消息）
+    1. Redis：会话 hash + 消息列表 + 用户索引条目（ZREM）
+       —— 索引必须显式删除：只靠 30 天 TTL 会在列表里积压"点了没反应的僵尸项"
+    2. MySQL：删 assist_session + assist_message（外键 CASCADE 自动删消息）
     """
+    # 先取 user_id（清索引要定位到人的索引键）；hash 已丢则从 MySQL 拿
+    user_id = None
+    try:
+        meta = get_session(session_id)
+        if meta:
+            user_id = meta.get("user_id")
+    except Exception:
+        pass
+
     r = get_redis()
     r.delete(_sess_key(session_id))
     r.delete(_msgs_key(session_id))
+    if user_id:
+        r.zrem(_user_index_key(user_id), session_id)
 
     try:
         db = MySQLClient()

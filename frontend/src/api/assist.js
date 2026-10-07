@@ -33,18 +33,27 @@ export async function* chatStream({ sessionId = null, caseId = null, message }) 
   }
 }
 
-// H2 采纳回流：引用卡片一键写入案件
-export async function adoptCitation({ caseId, replyId, citation, target = 'similar_case_doc' }) {
+// H6 引用原文：点击引用卡片「查看原文」拉取完整条文 / 案例四段
+export async function fetchCitation(refId) {
+  const res = await request(`/assist/citation?ref_id=${encodeURIComponent(refId)}`)
+  if (!res.ok) throw new Error(`获取原文失败：${res.status}`)
+  return res.json()
+}
+
+// H2 采纳回流：引用卡片一键写入案件（落 assist_adoption + case_note 两张表）
+export async function adoptCitation({ caseId, sessionId, replyId, citation, target = 'case_note' }) {
   // request 自动带 Authorization 头
   const res = await request('/assist/adopt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       case_id: caseId,
+      session_id: sessionId,
       from_reply_id: replyId,
       citation_type: citation.citation_type,
       ref_id: citation.ref_id,
-      content: citation.content || citation.title,
+      title: citation.title,
+      content: citation.snippet || citation.content || citation.title,
       target,
     }),
   })

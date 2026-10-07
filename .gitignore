@@ -18,3 +18,7 @@ frontend/dist/
 
 # 临时资源与脚本（非项目产物）
 scripts/
+erro/
+
+# 向量库（派生数据，可由 reindex 重建）
+Chromadb/

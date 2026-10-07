@@ -13,6 +13,12 @@ export default defineConfig({
     AutoImport({ resolvers: [ElementPlusResolver()] }),
     Components({ resolvers: [ElementPlusResolver()] }),
   ],
+  // vitest 配置（仅测试时生效）：组件冒烟测试跑在 happy-dom 里，
+  // element-plus 需内联走 vite 管道才能处理其 CSS import
+  test: {
+    environment: 'happy-dom',
+    server: { deps: { inline: ['element-plus'] } },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -33,6 +39,7 @@ export default defineConfig({
         },
       },
       '/admin': { target: 'http://localhost:8000', changeOrigin: true },
+      '/stats': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
   build: {

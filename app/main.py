@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 
-from app.api import cases, assist, auth, kb, logs
+from app.api import cases, assist, auth, intake, kb, logs, stats
 
 logger = logging.getLogger("warmup")
 
@@ -78,11 +78,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class CacheControlMiddleware:
+    """静态资源缓存策略（纯 ASGI，避免 BaseHTTPMiddleware 干扰 SSE 流式）。
+
+    - index.html 不缓存：构建后 chunk 文件名变化，旧 html 引用已删除的旧 chunk
+      会导致浏览器 404 → 页面白屏（"改完前端打不开"的常见原因）
+    - /assets/ 带 hash 可永久缓存
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        path = scope.get("path", "")
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = message.setdefault("headers", [])
+                ctype = next((v for k, v in headers if k.lower() == b"content-type"), b"")
+                if b"text/html" in ctype:
+                    headers.append((b"cache-control", b"no-cache"))
+                elif path.startswith("/assets/"):
+                    headers.append((b"cache-control", b"public, max-age=31536000, immutable"))
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(CacheControlMiddleware)
+
 app.include_router(auth.router)
 app.include_router(cases.router)
+app.include_router(intake.router)
 app.include_router(assist.router)
 app.include_router(kb.router)
 app.include_router(logs.router)
+app.include_router(stats.router)
 
 # 知识库配置表幂等建表（kb_rule/kb_schema/kb_prompt；法条/案例走 OSS+Chroma，不建表）
 try:
@@ -96,6 +130,24 @@ try:
 except Exception as _e:
     logger.warning("logs 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
 
+# 案件域表幂等建表（case_info / case_note）
+try:
+    cases.init_tables()
+except Exception as _e:
+    logger.warning("cases 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# 受理流程表幂等建表（element / element_confirm_log / verification_report / case_status_history）
+try:
+    intake.init_tables()
+except Exception as _e:
+    logger.warning("intake 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# AI 助手表幂等建表（assist_session/message 基线 + assist_adoption）
+try:
+    assist.init_tables()
+except Exception as _e:
+    logger.warning("assist 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
 # 前端为 Vite 工程（frontend/）：生产产物在 frontend/dist，由后端同源托管
 # 必须放在所有 API 路由注册之后；dist 不存在时（未执行 npm run build）给出提示
 DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -108,7 +160,9 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    # timeout_graceful_shutdown=3：重启/重载时最多等 3 秒优雅关闭，
-    # 防止旧 worker 因挂起的长连接一直不退出、热重载换不上新代码
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True,
+    # reload 必须为 False：本机（Windows）uvicorn 热重载静默失灵——改了代码不生效，
+    # 且每次重启会留下孤儿 worker 子进程继续用旧代码占着 8000 端口（极难排查）。
+    # 后端代码改动后：taskkill 旧进程 → 重新执行本文件。
+    # timeout_graceful_shutdown=3：退出时最多等 3 秒，不被挂起的长连接拖住。
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False,
                 timeout_graceful_shutdown=3)

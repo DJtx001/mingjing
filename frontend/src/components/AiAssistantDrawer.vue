@@ -37,7 +37,11 @@
               在线 · 知识库驱动
             </span>
           </div>
-          <el-tag v-if="caseId" size="small" type="success" effect="light" round>案件 {{ caseId }}</el-tag>
+          <!-- 案件上下文条：可见可清除（×退回通用问答），让"AI 已了解本案"一目了然 -->
+          <el-tag v-if="caseId" size="small" type="success" effect="light" round closable
+                  class="case-chip" @close="emit('clear-case')">
+            📂 {{ caseLabel || caseId }}
+          </el-tag>
         </div>
       </div>
 
@@ -65,7 +69,7 @@
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </div>
               <div class="session-info">
-                <div class="session-title">{{ s.last_message || '新对话' }}</div>
+                <div class="session-title">{{ s.title || '新对话' }}</div>
                 <div class="session-time">{{ formatTime(s.updated_at) }}</div>
               </div>
               <el-popconfirm
@@ -122,14 +126,16 @@
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
               <div class="msg-main">
-                <div class="bubble" :class="{ streaming: m.streaming }">{{ m.content }}</div>
+                <div class="bubble" :class="{ streaming: m.streaming, 'md-body': m.role === 'assistant' }"
+                     v-html="m.role === 'assistant' ? renderMd(m.content) : escapeText(m.content)"></div>
                 <div v-for="(c, j) in m.citations" :key="j" class="cite-card" :class="c.citation_type">
                   <div class="cite-head">
                     <span class="cite-badge">{{ c.citation_type === 'law' ? '法条' : '案例' }}</span>
                     <span class="cite-title">{{ c.title }}</span>
                   </div>
                   <div class="cite-actions">
-                    <el-button link type="primary" size="small">查看原文 ↗</el-button>
+                    <el-button v-if="c.ref_id" link type="primary" size="small"
+                               @click="onViewCitation(c)">查看原文 ↗</el-button>
                     <el-button v-if="caseId" link type="success" size="small" @click="adopt(m, c)">采纳到本案</el-button>
                   </div>
                 </div>
@@ -141,6 +147,7 @@
           </div>
           <div class="input-bar">
             <el-input
+              ref="inputRef"
               v-model="input"
               placeholder="输入问题，Enter 发送"
               @keyup.enter="send"
@@ -155,11 +162,29 @@
       </div>
     </div>
   </el-drawer>
+
+  <!-- 引用原文弹窗（「查看原文」）：法条全文 / 案例四段，Markdown 渲染 -->
+  <el-dialog v-model="citeVisible" :title="citeData.title" width="680px" top="6vh" append-to-body>
+    <div v-loading="citeLoading" class="cite-full">
+      <div v-if="citeData.meta" class="cite-full-meta">{{ citeData.meta }}</div>
+      <div class="md-body" v-html="renderMd(citeData.content)"></div>
+    </div>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, computed, nextTick, reactive } from 'vue'
-import { chatStream, adoptCitation, listSessions, getSessionMessages, deleteSession } from '../api/assist.js'
+import MarkdownIt from 'markdown-it'
+import { chatStream, adoptCitation, listSessions, getSessionMessages, deleteSession, fetchCitation } from '../api/assist.js'
+
+// AI 回答按 Markdown 渲染（LLM 输出 ## / ** / 列表等；html:false 转义原始标签防 XSS）
+const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
+function renderMd(text) { return md.render(text || '') }
+
+// 用户消息走纯文本（转义后原样显示，保留换行）
+function escapeText(text) {
+  return (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 // ---------- 悬浮入口拖动 ----------
 const FAB_POS_KEY = 'mj_ai_fab_pos'
@@ -230,7 +255,10 @@ window.addEventListener('resize', clampFab)
 
 const props = defineProps({
   caseId: { type: String, default: null },
+  caseLabel: { type: String, default: '' },   // 案件上下文条文案（如 "AJ2026-10086 · 王某 vs 张某 · 民间借贷"）
 })
+
+const emit = defineEmits(['clear-case'])
 
 const drawer = ref(false)
 const sessionId = ref(null)
@@ -240,23 +268,39 @@ const sending = ref(false)
 const chatList = ref(null)
 const sessions = ref([])
 
-const quickQuestions = [
-  '催讨的诉讼时效从什么时候起算？',
-  '这种情况能申请司法确认吗？',
-  '生成一份要素补充询问清单',
-]
+const quickQuestions = computed(() => {
+  const base = [
+    '催讨的诉讼时效从什么时候起算？',
+    '这种情况能申请司法确认吗？',
+    '生成一份要素补充询问清单',
+  ]
+  // 有案件上下文时前置一条案件快捷问（案件感知直接可答）
+  return props.caseId ? ['这个案子现在什么情况', ...base] : base
+})
+
+const inputRef = ref(null)
 
 async function openDrawer() {
   drawer.value = true
   await loadSessions()
+  nextTick(() => inputRef.value?.focus())   // 打开即可直接打字
 }
 
-// 对外暴露 open()：供 App.vue 侧边栏菜单入口调用（模板 ref）
-defineExpose({ open: openDrawer })
+// 「AI 办案」入口：每次都是全新对话，打开即聚焦输入框
+// （想快速了解案件时，点快捷问题「这个案子现在什么情况」——不自动代问）
+async function openForCase() {
+  newSession()
+  await openDrawer()
+}
+
+// 对外暴露：App.vue 侧边栏菜单用 open()；案件行「AI 办案」用 openForCase()
+defineExpose({ open: openDrawer, openForCase })
 
 async function loadSessions() {
   try {
-    const res = await listSessions(props.caseId)
+    // 列表固定展示"我的所有对话"——不按当前案件过滤
+    // （caseId 只用于：新对话绑定案件 + AI 案件感知；按案件过滤会让列表忽隐忽现）
+    const res = await listSessions()
     sessions.value = res.items || []
   } catch (e) {
     console.error('加载会话列表失败', e)
@@ -343,8 +387,35 @@ async function send() {
 }
 
 async function adopt(message, citation) {
-  await adoptCitation({ caseId: props.caseId, replyId: message.reply_id, citation })
-  ElMessage.success('已采纳到本案类案参考')
+  try {
+    await adoptCitation({ caseId: props.caseId, sessionId: sessionId.value,
+                          replyId: message.reply_id, citation })
+    ElMessage.success(`已采纳到本案（${props.caseId}），可在案件详情备注区查看`)
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+// ---------- 引用原文（查看原文弹窗） ----------
+const citeVisible = ref(false), citeLoading = ref(false)
+const citeData = ref({ title: '', meta: '', content: '' })
+
+async function onViewCitation(c) {
+  citeVisible.value = true
+  citeLoading.value = true
+  citeData.value = { title: c.title || '', meta: '', content: '' }
+  try {
+    const d = await fetchCitation(c.ref_id)
+    citeData.value = {
+      title: d.title,
+      meta: (d.type === 'law' ? '法条' : '案例') + (d.meta ? ' · ' + d.meta : ''),
+      content: d.content,
+    }
+  } catch (e) {
+    citeData.value = { ...citeData.value, content: '加载失败：' + e.message }
+  } finally {
+    citeLoading.value = false
+  }
 }
 
 function formatTime(t) {
@@ -727,6 +798,43 @@ function formatTime(t) {
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
+/* 案件上下文条（头部）：超长省略，× 清除退回通用问答 */
+.case-chip { max-width: 360px; }
+.case-chip :deep(.el-tag__content) {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* AI 回答 Markdown 渲染（v-html 结构，white-space 交还给块级元素） */
+.md-body { white-space: normal; }
+.md-body p { margin: 5px 0; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  margin: 12px 0 6px; font-size: 14px; font-weight: 700; color: #1f3350;
+}
+.md-body h1 { font-size: 15px; }
+.md-body h1:first-child, .md-body h2:first-child, .md-body h3:first-child { margin-top: 2px; }
+.md-body ul, .md-body ol { margin: 4px 0; padding-left: 20px; }
+.md-body li { margin: 3px 0; }
+.md-body li > p { margin: 0; }
+.md-body strong { color: #1f3350; }
+.md-body code {
+  background: #eef2f8; border-radius: 4px; padding: 1px 5px;
+  font-family: Consolas, "Courier New", monospace; font-size: 12px;
+}
+.md-body pre {
+  background: #f6f8fc; border: 1px solid #e9eef6; border-radius: 8px;
+  padding: 10px 12px; overflow-x: auto;
+}
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote {
+  margin: 6px 0; padding: 2px 12px;
+  border-left: 3px solid #c9d8ef; color: #55627a;
+}
+.md-body table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+.md-body th, .md-body td { border: 1px solid #e2e8f2; padding: 4px 10px; }
+.md-body th { background: #f4f7fc; }
+.md-body a { color: #2b5fad; }
+.md-body hr { border: none; border-top: 1px dashed #dde5f0; margin: 10px 0; }
+
 /* ===== 引用卡片 ===== */
 .cite-card {
   margin-top: 8px;
@@ -776,6 +884,14 @@ function formatTime(t) {
   margin-top: 2px;
   padding-left: 40px;
 }
+/* 引用原文弹窗 */
+.cite-full { max-height: 68vh; overflow-y: auto; padding-right: 6px; }
+.cite-full-meta {
+  margin-bottom: 10px; padding: 6px 10px;
+  background: #f4f7fc; border-radius: 6px;
+  color: #5a6b84; font-size: 13px;
+}
+.cite-full .md-body { font-size: 14px; }
 
 /* ===== 右下角悬浮入口（大胶囊，图标+文字常显，可拖动） ===== */
 .ai-fab {

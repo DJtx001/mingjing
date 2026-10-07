@@ -49,18 +49,19 @@ def delete_file(key: str):
     bucket.delete_object(key)
 
 
-def list_files(prefix: str = "", max_keys: int = 100) -> list[dict]:
-    """列出 OSS 上的文件。prefix=前缀过滤（如 laws/）"""
+def list_files(prefix: str = "") -> list[dict]:
+    """列出 OSS 上的全部文件（ObjectIterator 自动翻页，不受单页 1000 条上限约束）。
+
+    prefix=前缀过滤（如 laws/）。max_keys 为每页大小，不影响总返回量。
+    """
     bucket = _get_bucket()
-    result = bucket.list_objects(prefix, max_keys=max_keys)
     files = []
-    for obj in result.object_list:
-        if isinstance(obj, oss2.models.SimplifiedObjectInfo):
-            files.append({
-                "key": obj.key,
-                "size": obj.size,
-                "last_modified": obj.last_modified,
-            })
+    for obj in oss2.ObjectIteratorV2(bucket, prefix=prefix, max_keys=500):
+        files.append({
+            "key": obj.key,
+            "size": obj.size,
+            "last_modified": obj.last_modified,
+        })
     return files
 
 

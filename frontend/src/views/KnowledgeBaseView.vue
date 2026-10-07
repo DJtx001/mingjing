@@ -6,13 +6,22 @@
         <div class="toolbar">
           <el-upload :show-file-list="false" :auto-upload="false" accept=".md,.txt,.pdf,.doc,.docx"
                      :on-change="(f) => onUpload(f, 'laws')">
-            <el-button type="primary" class="upload-btn">📤 上传法条文件</el-button>
+            <el-button type="primary" class="upload-btn">📤 导入</el-button>
           </el-upload>
-          <span class="hint">支持 .md / .txt / .pdf / .doc / .docx，上传到 OSS laws/ 目录</span>
+          <el-button class="batch-btn" @click="openBatch('laws')">📁 批量导入</el-button>
+          <span class="hint">导入后自动解析入库：法条按「第X条」切分（.md）；PDF 等仅存 OSS</span>
           <div class="spacer"></div>
+          <el-input v-model="lawKw" placeholder="按文件名搜索" clearable class="search-input" />
+          <el-button size="small" :type="idx.status === 'error' ? 'danger' : 'default'"
+                     :loading="idxRunning" @click="onReindexClick">{{ idxLabel }}</el-button>
+          <el-button v-if="isAdmin" size="small" type="danger" plain :disabled="!lawSel.length"
+                     @click="batchDelete('laws')">删除选中{{ lawSel.length ? `(${lawSel.length})` : '' }}</el-button>
+          <el-button v-else size="small" type="danger" plain @click="guardAdmin">删除选中</el-button>
           <el-button size="small" @click="loadLawFiles">刷新</el-button>
         </div>
-        <el-table :data="lawFiles" size="small" stripe v-loading="lawLoading">
+        <el-table :data="lawPaged" size="small" stripe v-loading="lawLoading"
+                  @selection-change="s => lawSel = s">
+          <el-table-column type="selection" width="38" />
           <el-table-column prop="key" label="文件路径" min-width="280" show-overflow-tooltip>
             <template #default="{ row }"><span class="path-text">{{ row.key }}</span></template>
           </el-table-column>
@@ -22,10 +31,9 @@
           <el-table-column label="上传时间" width="170">
             <template #default="{ row }">{{ fmtTime(row.last_modified) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="180">
+          <el-table-column label="操作" width="140">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="onPreview(row)">查看</el-button>
-              <el-button link type="primary" size="small" @click="onSyncLaw(row)">入库</el-button>
               <!-- 非 admin 渲染裸按钮：点击直接弹权限提示，不经过 popconfirm，确保必弹 -->
               <el-popconfirm v-if="isAdmin" title="确定删除该文件？" confirm-button-text="删除" cancel-button-text="取消"
                              confirm-button-type="danger" placement="left" width="190"
@@ -38,7 +46,10 @@
             </template>
           </el-table-column>
         </el-table>
-        <div class="tip-text">文件存于 OSS，点击「入库」后解析并写入向量库（后续实现）</div>
+        <el-pagination v-model:current-page="lawPage" v-model:page-size="lawPageSize"
+                       :page-sizes="[50, 100, 200]" :total="lawFiltered.length"
+                       layout="total, sizes, prev, pager, next" background class="kb-pager" />
+        <div class="tip-text">.md 上传即解析入 MySQL 结构化表（law）；向量库由「灌库」统一灌入</div>
       </el-tab-pane>
 
       <!-- ===================== Tab2 案例库（OSS 文件） ===================== -->
@@ -46,13 +57,22 @@
         <div class="toolbar">
           <el-upload :show-file-list="false" :auto-upload="false" accept=".md,.txt,.pdf,.doc,.docx"
                      :on-change="(f) => onUpload(f, 'cases')">
-            <el-button type="primary" class="upload-btn">📤 上传案例文件</el-button>
+            <el-button type="primary" class="upload-btn">📤 导入</el-button>
           </el-upload>
-          <span class="hint">支持 .md / .txt / .pdf / .doc / .docx，上传到 OSS cases/ 目录</span>
+          <el-button class="batch-btn" @click="openBatch('cases')">📁 批量导入</el-button>
+          <span class="hint">导入后自动解析入库：案例按四段切分（.md）；PDF 等仅存 OSS</span>
           <div class="spacer"></div>
+          <el-input v-model="caseKw" placeholder="按文件名搜索" clearable class="search-input" />
+          <el-button size="small" :type="idx.status === 'error' ? 'danger' : 'default'"
+                     :loading="idxRunning" @click="onReindexClick">{{ idxLabel }}</el-button>
+          <el-button v-if="isAdmin" size="small" type="danger" plain :disabled="!caseSel.length"
+                     @click="batchDelete('cases')">删除选中{{ caseSel.length ? `(${caseSel.length})` : '' }}</el-button>
+          <el-button v-else size="small" type="danger" plain @click="guardAdmin">删除选中</el-button>
           <el-button size="small" @click="loadCaseFiles">刷新</el-button>
         </div>
-        <el-table :data="caseFiles" size="small" stripe v-loading="caseLoading">
+        <el-table :data="casePaged" size="small" stripe v-loading="caseLoading"
+                  @selection-change="s => caseSel = s">
+          <el-table-column type="selection" width="38" />
           <el-table-column prop="key" label="文件路径" min-width="280" show-overflow-tooltip>
             <template #default="{ row }"><span class="path-text">{{ row.key }}</span></template>
           </el-table-column>
@@ -62,10 +82,9 @@
           <el-table-column label="上传时间" width="170">
             <template #default="{ row }">{{ fmtTime(row.last_modified) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="180">
+          <el-table-column label="操作" width="140">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="onPreview(row)">查看</el-button>
-              <el-button link type="primary" size="small" @click="onSyncCase(row)">入库</el-button>
               <!-- 非 admin 渲染裸按钮：点击直接弹权限提示，不经过 popconfirm，确保必弹 -->
               <el-popconfirm v-if="isAdmin" title="确定删除该文件？" confirm-button-text="删除" cancel-button-text="取消"
                              confirm-button-type="danger" placement="left" width="190"
@@ -78,7 +97,10 @@
             </template>
           </el-table-column>
         </el-table>
-        <div class="tip-text">文件存于 OSS，点击「入库」后做四段式校验并写入向量库（后续实现）</div>
+        <el-pagination v-model:current-page="casePage" v-model:page-size="casePageSize"
+                       :page-sizes="[50, 100, 200]" :total="caseFiltered.length"
+                       layout="total, sizes, prev, pager, next" background class="kb-pager" />
+        <div class="tip-text">.md 上传即解析入 MySQL 结构化表（case_ref，四段式）；向量库由「灌库」统一灌入</div>
       </el-tab-pane>
 
       <!-- ===================== Tab3 核验规则 ===================== -->
@@ -86,9 +108,21 @@
         <el-alert type="info" :closable="false" class="tip"
                   title="规则引擎不经 LLM（硬规则），停用规则会影响核验召回，请谨慎操作" />
         <el-table :data="rules" size="small" stripe v-loading="ruleLoading">
-          <el-table-column prop="rule_id" label="编号" width="80"></el-table-column>
-          <el-table-column prop="name" label="规则名" width="180"></el-table-column>
-          <el-table-column prop="description" label="说明" min-width="320" show-overflow-tooltip></el-table-column>
+          <el-table-column prop="rule_id" label="编号" width="70"></el-table-column>
+          <el-table-column prop="name" label="规则名" width="170"></el-table-column>
+          <el-table-column label="级别" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.severity === 'block' ? 'danger' : 'warning'" size="small">
+                {{ row.severity === 'block' ? '刚性' : '柔性' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="命中关键词" min-width="240" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="kw-text">{{ (row.keywords || []).join('、') || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="description" label="说明" min-width="260" show-overflow-tooltip></el-table-column>
           <el-table-column label="启用" width="100">
             <template #default="{ row }">
               <!-- 停用前二次确认（before-change 返回 Promise）；启用直接生效。API 统一在 change 里调 -->
@@ -145,11 +179,46 @@
         <el-empty v-else-if="previewType === 'error'" :description="previewContent" />
       </div>
     </el-dialog>
+
+    <!-- 批量导入对话框（选文件夹/多选文件 → 并发上传 → 进度与失败汇总） -->
+    <el-dialog v-model="batchVisible" :title="batchCategory === 'laws' ? '批量导入法条' : '批量导入案例'"
+               width="560px" :close-on-click-modal="false">
+      <div class="batch-pick">
+        <el-button @click="folderInput.click()" :disabled="batchRunning">📁 选择文件夹</el-button>
+        <el-button @click="filesInput.click()" :disabled="batchRunning">📄 选择文件（可多选）</el-button>
+        <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onPickFiles">
+        <input ref="filesInput" type="file" multiple hidden accept=".md,.txt" @change="onPickFiles">
+      </div>
+      <div v-if="batchFiles.length" class="batch-summary">
+        已选 <b>{{ batchFiles.length }}</b> 个文件（目录结构将作为分类保留）
+      </div>
+      <template v-if="batchDone > 0">
+        <el-progress :percentage="batchPct" :status="batchFail && batchPct === 100 ? 'warning' : undefined"
+                     class="batch-progress" />
+        <div class="batch-stat">
+          完成 {{ batchDone }}/{{ batchFiles.length }} · 成功 {{ batchOk }} · 解析入库
+          <b>{{ batchParsed }}</b> 条 · 失败 <span :class="{ fail: batchFail }">{{ batchFail }}</span>
+        </div>
+        <div v-if="batchErrors.length" class="batch-errors">
+          <div v-for="e in batchErrors.slice(0, 5)" :key="e.name" class="batch-error-item">
+            {{ e.name }}：{{ e.message }}
+          </div>
+          <div v-if="batchErrors.length > 5" class="batch-error-item">…等共 {{ batchErrors.length }} 个失败</div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="batchVisible = false" :disabled="batchRunning">关闭</el-button>
+        <el-button type="primary" @click="startBatch"
+                   :disabled="batchRunning || batchFinished || !batchFiles.length">
+          {{ batchRunning ? '导入中…' : (batchFinished ? '✓ 已完成，重新选择可再次导入' : '开始导入') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getUser } from '../api/http.js'
 import {
   fetchRules, updateRule,
@@ -157,6 +226,7 @@ import {
   fetchPrompts, savePrompt,
   uploadKbFile, fetchKbFiles, deleteKbFile,
   fetchKbFileContent, fetchKbFileBlob,
+  reindex, fetchReindexStatus,
 } from '../api/kb.js'
 
 const tab = ref('laws')
@@ -174,13 +244,151 @@ function guardAdmin() {
 // ---------- OSS 文件（法条/案例共用） ----------
 const lawFiles = ref([]), lawLoading = ref(false)
 const caseFiles = ref([]), caseLoading = ref(false)
+const lawSel = ref([]), caseSel = ref([])   // 表格勾选行（批量删除用）
+
+// 文件名搜索 + 前端分页（千级文件一次渲染会卡）
+const lawKw = ref(''), lawPage = ref(1), lawPageSize = ref(50)
+const lawFiltered = computed(() => {
+  const kw = lawKw.value.trim().toLowerCase()
+  return kw ? lawFiles.value.filter(f => f.key.toLowerCase().includes(kw)) : lawFiles.value
+})
+const lawPaged = computed(() =>
+  lawFiltered.value.slice((lawPage.value - 1) * lawPageSize.value, lawPage.value * lawPageSize.value))
+watch([lawKw, lawPageSize], () => { lawPage.value = 1 })
+
+const caseKw = ref(''), casePage = ref(1), casePageSize = ref(50)
+const caseFiltered = computed(() => {
+  const kw = caseKw.value.trim().toLowerCase()
+  return kw ? caseFiles.value.filter(f => f.key.toLowerCase().includes(kw)) : caseFiles.value
+})
+const casePaged = computed(() =>
+  caseFiltered.value.slice((casePage.value - 1) * casePageSize.value, casePage.value * casePageSize.value))
+watch([caseKw, casePageSize], () => { casePage.value = 1 })
 
 async function onUpload(uploadFile, category) {
   try {
     const r = await uploadKbFile(uploadFile.raw, category)
-    ElMessage.success(`已上传 ${r.filename}（${fmtSize(r.size)}）`)
+    if (r.note) ElMessage.warning(`${r.filename} 已存 OSS，但${r.note}`)
+    else ElMessage.success(`已上传 ${r.filename}（${fmtSize(r.size)}），解析入库 ${r.parsed} 条`)
     category === 'laws' ? loadLawFiles() : loadCaseFiles()
   } catch (e) { ElMessage.error(e.message) }
+}
+
+// ---------- 灌库（把 vector_synced=0 的记录灌入 Chroma，后台任务轮询进度） ----------
+const idx = ref({ status: 'idle', total: 0, processed: 0, error: null })
+let idxTimer = null
+
+const idxRunning = computed(() => idx.value.status === 'running')
+const idxLabel = computed(() => {
+  if (idx.value.status === 'running') return `⏳ 灌库中 ${idx.value.processed}/${idx.value.total}`
+  if (idx.value.status === 'error') return '⚠️ 灌库失败'
+  return '🔄 灌库'
+})
+
+async function doReindex(silent = false) {
+  try {
+    await reindex()
+    if (silent) ElMessage.info('已在后台灌入向量库，进度见「灌库」按钮')
+    else ElMessage.success('灌库任务已开始')
+    pollIdx()
+  } catch (e) { if (!silent) ElMessage.error(e.message) }
+}
+
+async function onReindexClick() {
+  if (!guardAdmin()) return
+  try {
+    await ElMessageBox.confirm(
+      '把待同步的法条/案例向量化写入 Chroma（后台执行，可随时离开页面）。',
+      '灌库',
+      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  doReindex()
+}
+
+// 轮询灌库进度：running 时每 2s 查一次，结束时刷新并提示
+async function pollIdx() {
+  clearInterval(idxTimer)
+  try { idx.value = await fetchReindexStatus() } catch { /* 后端未起时静默 */ }
+  if (idx.value.status !== 'running') { finishIdx(); return }
+  idxTimer = setInterval(async () => {
+    try { idx.value = await fetchReindexStatus() } catch { return }
+    if (idx.value.status !== 'running') { clearInterval(idxTimer); finishIdx() }
+  }, 2000)
+}
+
+function finishIdx() {
+  if (idx.value.status === 'done') {
+    const sk = idx.value.skipped ? `，跳过 ${idx.value.skipped} 条（无法向量化）` : ''
+    ElMessage.success(`灌库完成，共 ${idx.value.total} 条${sk}`)
+  } else if (idx.value.status === 'error') ElMessage.error(`灌库失败：${idx.value.error}`)
+}
+
+onUnmounted(() => clearInterval(idxTimer))
+
+// ---------- 批量导入（法条/案例共用，弹窗内选文件夹或多选文件，5 路并发上传） ----------
+const batchVisible = ref(false)
+const batchCategory = ref('laws')
+const batchFiles = ref([])        // [{file, relPath}]，relPath 已去掉所选文件夹首段
+const batchRunning = ref(false)
+const batchFinished = ref(false)  // 本批已导完：禁用「开始导入」防重复导入；重选文件后复位
+const batchDone = ref(0), batchOk = ref(0), batchParsed = ref(0), batchFail = ref(0)
+const batchErrors = ref([])       // [{name, message}]
+const folderInput = ref(null), filesInput = ref(null)
+
+const batchPct = computed(() =>
+  batchFiles.value.length ? Math.round((batchDone.value / batchFiles.value.length) * 100) : 0)
+
+function openBatch(category) {
+  batchCategory.value = category
+  batchFiles.value = []
+  batchDone.value = batchOk.value = batchParsed.value = batchFail.value = 0
+  batchErrors.value = []
+  batchRunning.value = false
+  batchVisible.value = true
+}
+
+function onPickFiles(e) {
+  const picked = [...e.target.files]
+  // webkitRelativePath 含所选文件夹名（如 laws/行政法规/x.md），去掉首段再传给后端
+  batchFiles.value = picked.map(f => {
+    const rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/')
+    return { file: f, relPath: rel || f.name }
+  })
+  batchDone.value = batchOk.value = batchParsed.value = batchFail.value = 0
+  batchErrors.value = []
+  batchFinished.value = false
+  e.target.value = ''   // 清空以便重复选择同一目录
+}
+
+async function startBatch() {
+  batchRunning.value = true
+  let idx = 0
+  const CONCURRENCY = 5
+  const workers = Array.from({ length: CONCURRENCY }, async () => {
+    while (idx < batchFiles.value.length) {
+      const item = batchFiles.value[idx++]
+      try {
+        const r = await uploadKbFile(item.file, batchCategory.value, item.relPath)
+        if (r.note) throw new Error(r.note)   // 后端解析失败（文件已存 OSS）
+        batchOk.value++
+        batchParsed.value += r.parsed || 0
+      } catch (e) {
+        batchFail.value++
+        batchErrors.value.push({ name: item.relPath, message: e.message })
+      } finally {
+        batchDone.value++
+      }
+    }
+  })
+  await Promise.all(workers)
+  batchRunning.value = false
+  batchFinished.value = true
+  batchCategory.value === 'laws' ? loadLawFiles() : loadCaseFiles()
+  // 导完自动灌库（导完即用）：reindex 幂等，只处理 vector_synced=0；普通用户无灌库权限，跳过
+  if (batchParsed.value > 0 && isAdmin && !idxRunning.value) {
+    doReindex(true)
+  }
 }
 
 async function loadLawFiles() {
@@ -202,9 +410,33 @@ async function doDelete(row, category) {
   } catch (e) { ElMessage.error(e.message) }
 }
 
-// 入库：后续实现（从 OSS 读取 → 解析 → 写入向量库 Chroma）
-function onSyncLaw(row) { ElMessage.info(`「入库」功能后续实现：${row.key}`) }
-function onSyncCase(row) { ElMessage.info(`「入库」功能后续实现：${row.key}`) }
+// 批量删除：3 路并发调单删接口（后端会级联清理 MySQL 结构化数据与 Chroma 向量）
+async function batchDelete(category) {
+  const sel = (category === 'laws' ? lawSel : caseSel).value
+  if (!sel.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${sel.length} 个文件？对应的结构化数据与向量库内容将一并清理。`,
+      '批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  const fails = []
+  let i = 0
+  const workers = Array.from({ length: 3 }, async () => {
+    while (i < sel.length) {
+      const row = sel[i++]
+      try { await deleteKbFile(row.key) } catch (e) { fails.push(`${row.key}：${e.message}`) }
+    }
+  })
+  await Promise.all(workers)
+  if (fails.length) ElMessage.error(`${sel.length - fails.length} 个成功，${fails.length} 个失败：${fails[0]}`)
+  else ElMessage.success(`已删除 ${sel.length} 个文件`)
+  category === 'laws' ? loadLawFiles() : loadCaseFiles()
+}
+
+// 入库已随上传自动完成（.md 解析入 MySQL），无需单独操作
+
 
 // ---------- 在线预览 ----------
 // previewType: pdf（iframe 内嵌）/ text（文本）/ unsupported（仅可下载）/ error
@@ -350,13 +582,13 @@ async function onSavePrompt() {
   ElMessage.success('已保存')
 }
 
-onMounted(() => { loadLawFiles(); loadCaseFiles(); loadRules(); loadSchema(); loadPrompts() })
+onMounted(() => { loadLawFiles(); loadCaseFiles(); loadRules(); loadSchema(); loadPrompts(); pollIdx() })
 </script>
 
 <style scoped>
-.kb-page { background: #fff; border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow-card); }
+.kb-page { background: #fff; border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow-card); font-size: 14px; }
 .kb-tabs :deep(.el-tabs__header) { margin-bottom: 18px; }
-.kb-tabs :deep(.el-tabs__item) { font-size: 14px; letter-spacing: 0.3px; }
+.kb-tabs :deep(.el-tabs__item) { font-size: 15px; letter-spacing: 0.3px; }
 .toolbar {
   display: flex; align-items: center; gap: 8px;
   padding-bottom: 12px; margin-bottom: 12px;
@@ -378,15 +610,44 @@ onMounted(() => { loadLawFiles(); loadCaseFiles(); loadRules(); loadSchema(); lo
   box-shadow: 0 6px 18px rgba(43, 95, 173, 0.45);
   transform: translateY(-1px);
 }
+/* 批量导入按钮与主按钮同高同圆角，弱化视觉（plain 风格） */
+.batch-btn {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+/* 批量导入弹窗 */
+.batch-pick { display: flex; gap: 10px; }
+.batch-summary { margin-top: 12px; color: #3a4a60; font-size: 13px; }
+.batch-progress { margin-top: 14px; }
+.batch-stat { margin-top: 8px; color: #3a4a60; font-size: 13px; }
+.batch-stat .fail { color: #d93026; font-weight: 600; }
+.batch-errors {
+  margin-top: 10px; padding: 8px 12px;
+  background: #fdf2f1; border-radius: 6px;
+  max-height: 140px; overflow-y: auto;
+}
+.batch-error-item { color: #b42318; font-size: 13px; line-height: 1.8; }
 .toolbar .spacer { flex: 1; }
-.toolbar .ver { color: #909399; font-size: 12px; }
-.toolbar .hint { color: #909399; font-size: 12px; }
+.toolbar .ver { color: #909399; font-size: 13px; }
+.toolbar .hint { color: #909399; font-size: 13px; }
+/* 搜索框：默认尺寸（32px 高）+ 加宽，与表格字号匹配 */
+.search-input { width: 260px; }
+.kw-text { font-size: 12.5px; color: #5a6b84; }
+.kb-pager { margin-top: 14px; justify-content: flex-end; }
+.kb-pager :deep(.el-pagination__total),
+.kb-pager :deep(.el-pagination__sizes) { font-size: 13px; }
 .tip { margin-bottom: 12px; }
-.tip-text { margin-top: 8px; color: #909399; font-size: 12px; }
-.path-text { font-family: Consolas, "Courier New", monospace; font-size: 12.5px; color: #3a4a60; }
+.tip-text { margin-top: 8px; color: #909399; font-size: 13px; }
+.path-text { font-family: Consolas, "Courier New", monospace; font-size: 13.5px; color: #3a4a60; }
+/* 表格正文整体放大一档（原 small 字号偏小） */
+.kb-page :deep(.el-table .cell) { font-size: 13.5px; line-height: 1.7; }
+.kb-page :deep(.el-button--small) { font-size: 13px; }
 .mono :deep(.el-textarea__inner) {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 12.5px;
+  font-size: 13.5px;
   line-height: 1.7;
   padding: 12px 14px;
   border-radius: 10px;

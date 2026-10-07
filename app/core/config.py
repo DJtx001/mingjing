@@ -48,4 +48,12 @@ class Config:
         "bucket": os.getenv("OSS_BUCKET", "mingjing-01"),
     }
 
+    # 向量模型（阿里云 DashScope 兼容模式，openai SDK 直连）
+    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
+
+    # Chroma 本地持久化目录（派生数据，可由 reindex 重建）
+    CHROMA_PATH = str(BASE_DIR / os.getenv("CHROMA_PATH", "Chromadb"))
+
 config = Config()

@@ -16,3 +16,10 @@ export async function deleteLog(logId) {
   if (!res.ok) throw new Error(`删除日志失败：${res.status}`)
   return res.json()
 }
+
+// 清空全部日志（仅管理员；清空动作本身会再记一条审计）
+export async function clearLogs() {
+  const res = await request('/admin/logs', { method: 'DELETE' })
+  if (!res.ok) throw new Error(`清空日志失败：${res.status}`)
+  return res.json()
+}

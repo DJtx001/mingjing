@@ -72,20 +72,30 @@ export async function savePrompt(payload) {
 }
 
 // ---------- 索引 ----------
-// POST /admin/kb/reindex 重建向量索引（异步，幂等）
+// POST /admin/kb/reindex 灌库（后台线程灌 vector_synced=0 的记录，幂等）
 export async function reindex() {
   const res = await request('/admin/kb/reindex', { method: 'POST' })
-  if (!res.ok) throw new Error(await errMsg(res, '重建索引失败'))
+  if (!res.ok) throw new Error(await errMsg(res, '灌库失败'))
   return res.json()
 }
 
-// ---------- OSS 文件管理（法条/案例原始文件） ----------
-// POST /admin/kb/upload?category=laws|cases 上传文件到 OSS
+// GET /admin/kb/reindex/status 灌库进度 {task_id, status, total, processed, error}
+export async function fetchReindexStatus() {
+  const res = await request('/admin/kb/reindex/status')
+  if (!res.ok) throw new Error(await errMsg(res, '查询灌库进度失败'))
+  return res.json()
+}
+
+// ---------- OSS 文件管理（法条/案例原始文件 + 解析入库） ----------
+// POST /admin/kb/upload?category=laws|cases 上传文件到 OSS 并解析入库
+// relPath：批量导入时的相对路径（不含所选文件夹首段），如 "行政法规/xxx.md"，后端取目录段作分类
 // 注意：不手动设 Content-Type，浏览器自动带 multipart/form-data; boundary=...
-export async function uploadKbFile(file, category = 'laws') {
+export async function uploadKbFile(file, category = 'laws', relPath = '') {
   const form = new FormData()
   form.append('file', file)
-  const res = await request(`/admin/kb/upload?category=${category}`, {
+  const qp = new URLSearchParams({ category })
+  if (relPath) qp.set('rel_path', relPath)
+  const res = await request(`/admin/kb/upload?${qp}`, {
     method: 'POST',
     body: form,
   })

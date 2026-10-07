@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键（查询按 id DESC，天然时序且高效）',
   user_id     VARCHAR(32)  NOT NULL COMMENT '操作者用户ID（user.user_id）',
   username    VARCHAR(64)  NOT NULL COMMENT '操作者账号（冗余快照，用户改名/删除后日志仍可读）',
-  action      VARCHAR(32)  NOT NULL COMMENT '操作类型：login / kb_upload / kb_delete / rule_update / schema_save / prompt_save / kb_reindex / log_delete',
+  action      VARCHAR(32)  NOT NULL COMMENT '操作类型：login / kb_upload / kb_delete / rule_update / schema_save / prompt_save / kb_reindex / log_delete / log_clear',
   target      VARCHAR(255) DEFAULT NULL COMMENT '操作对象：文件名 / 规则ID / 纠纷类型 / 提示词key（登录为 NULL）',
   detail      JSON         DEFAULT NULL COMMENT '附加信息 JSON，如 {"enabled": false}、{"schema_version": 3}',
   ip          VARCHAR(45)  DEFAULT NULL COMMENT '来源 IP（45 长度兼容 IPv6）',
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 # 允许的 action 取值（查询过滤白名单，防拼 SQL 注入）
 ACTIONS = ("login", "kb_upload", "kb_delete", "rule_update",
-           "schema_save", "prompt_save", "kb_reindex", "log_delete")
+           "schema_save", "prompt_save", "kb_reindex", "log_delete", "log_clear")
 
 
 def init_tables():
@@ -95,3 +95,19 @@ def delete_log(log_id: int, request: Request, user=Depends(require_admin)):
     audit_service.record(user, "log_delete", target=str(log_id),
                          ip=request.client.host if request.client else "")
     return {"deleted": log_id}
+
+
+@router.delete("")
+def clear_logs(request: Request, user=Depends(require_admin)):
+    """清空全部操作日志（仅管理员）。清空动作本身记一条审计，形成闭环。"""
+    db = MySQLClient()
+    try:
+        n = db.execute("SELECT COUNT(*) AS n FROM audit_log")[0]["n"]
+        db.execute("DELETE FROM audit_log")
+        db.commit()
+    finally:
+        db.close()
+    # 清空后立即补一条：日志表清空后仅剩这条「清空」痕迹
+    audit_service.record(user, "log_clear", target="all", detail={"cleared": n},
+                         ip=request.client.host if request.client else "")
+    return {"cleared": n}

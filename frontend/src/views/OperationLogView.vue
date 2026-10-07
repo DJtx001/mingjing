@@ -15,6 +15,7 @@
       <div class="spacer"></div>
       <span class="total">共 <b>{{ total }}</b> 条</span>
       <el-button size="small" @click="load">刷新</el-button>
+      <el-button size="small" type="danger" plain @click="onClear">清空日志</el-button>
     </div>
 
     <el-table :data="items" size="small" stripe v-loading="loading">
@@ -63,7 +64,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { fetchLogs, deleteLog } from '../api/logs.js'
+import { fetchLogs, deleteLog, clearLogs } from '../api/logs.js'
 import { getUser } from '../api/http.js'
 // ElMessage 由 unplugin-auto-import 自动注入（显式 import 会丢样式，别加）
 
@@ -78,8 +79,9 @@ const ACTION_META = {
   rule_update: { label: '修改规则',   type: 'warning' },
   schema_save: { label: '保存 Schema', type: 'warning' },
   prompt_save: { label: '保存提示词', type: 'warning' },
-  kb_reindex:  { label: '重建索引',   type: 'info' },
+  kb_reindex:  { label: '灌库',   type: 'info' },
   log_delete:  { label: '删除日志',   type: 'danger' },
+  log_clear:   { label: '清空日志',   type: 'danger' },
 }
 
 const items = ref([])
@@ -122,6 +124,27 @@ async function onDelete(row) {
     ElMessage.success('已删除')
     // 删掉当前页最后一条时回退一页，避免看到空白页
     if (items.value.length === 1 && page.value > 1) page.value -= 1
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+// 清空全部日志：二次确认（不可逆重操作）；清空动作本身会留一条审计记录
+async function onClear() {
+  try {
+    await ElMessageBox.confirm(
+      '确定清空全部日志？该操作不可恢复；清空动作本身会留下一条记录。',
+      '清空确认',
+      { type: 'warning', confirmButtonText: '清空', cancelButtonText: '取消' }
+    )
+  } catch {
+    return   // 用户取消
+  }
+  try {
+    const r = await clearLogs()
+    ElMessage.success(`已清空 ${r.cleared} 条日志`)
+    page.value = 1
     load()
   } catch (e) {
     ElMessage.error(e.message)
