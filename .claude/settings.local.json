@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mingjing": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "C:\\Code\\Project\\ai-qiuzhao\\mingjing-intake",
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

@@ -96,11 +96,13 @@ def _flush(cur: dict | None, orphan: list[str], chapter: str | None, items: list
 
 
 # 案例四段：## 标题关键词 → 字段
+# 两套语料共用：法院案例库（基本案情/诉讼请求/裁判结果/案例分析）
+# 与裁判文书语料 MNBVC（案件事实/裁判理由/判决结果/相关法律条文）
 _CASE_SECTIONS = [
     ("fact", ("基本案情", "案件事实", "案情")),
-    ("process", ("诉讼请求", "处理过程", "调解过程", "审查过程")),
-    ("result", ("裁判结果", "处理结果", "调解结果", "仲裁结果")),
-    ("comment", ("案例分析", "案例评析", "评析", "分析")),
+    ("process", ("诉讼请求", "处理过程", "调解过程", "审查过程", "裁判理由")),
+    ("result", ("裁判结果", "处理结果", "调解结果", "仲裁结果", "判决结果")),
+    ("comment", ("案例分析", "案例评析", "评析", "分析", "相关法律条文")),
 ]
 
 # ============ PDF 案例（人民法院案例库"调解案例"格式）============
@@ -197,6 +199,9 @@ def parse_case_md(text: str) -> dict:
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line == _INFO_END.strip():
+            continue
+        # 跳过尾部分隔线与来源声明行（如 "> 来源：MNBVC…"），别混进正文段
+        if line == "---" or line.startswith("> 来源"):
             continue
         if line.startswith("# "):
             if title is None:

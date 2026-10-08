@@ -18,3 +18,4 @@ PyYAML==6.0.3
 oss2==2.18.4
 python-multipart==0.0.20
 chromadb==1.5.9
+mcp>=2.0

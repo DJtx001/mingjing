@@ -20,7 +20,11 @@
           <div class="label">法条总条数</div>
         </div>
         <div class="metric">
-          <div class="num">{{ kb.synced.toLocaleString() }}</div>
+          <div class="num">{{ kb.cases.toLocaleString() }}</div>
+          <div class="label">案例总条数</div>
+        </div>
+        <div class="metric">
+          <div class="num">{{ (kb.synced + kb.case_synced).toLocaleString() }}</div>
           <div class="label">已入向量库</div>
         </div>
         <div class="metric">
@@ -58,7 +62,7 @@
           <div ref="deptRef" class="chart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">向量库覆盖率 <span class="sub">（已灌 / 全部）</span></div>
+          <div class="chart-title">向量库覆盖率 <span class="sub">（法条 / 案例）</span></div>
           <div ref="syncRef" class="chart"></div>
         </div>
       </div>
@@ -78,7 +82,8 @@ echarts.use([BarChart, PieChart, LineChart, GridComponent, TooltipComponent, Can
 // 统计看板对所有登录用户开放（运营数据，受理员/复核员同样可查）
 const days = ref(30)
 const loading = ref(false)
-const kb = ref({ laws: 0, cases: 0, synced: 0, pending: 0, skipped: 0, categories: [] })
+const kb = ref({ laws: 0, cases: 0, synced: 0, pending: 0, skipped: 0,
+                 case_synced: 0, case_pending: 0, case_skipped: 0, categories: [] })
 const assist = ref({ sessions: 0, questions: 0, answers: 0, adoptions: 0,
                      adoption_rate: 0, no_evidence_rate: 0, top_cited_laws: [], daily: [] })
 
@@ -86,6 +91,7 @@ const citeRef = ref(null), trendRef = ref(null), deptRef = ref(null), syncRef = 
 const charts = {}   // 实例缓存：{cite, trend, dept, sync}，避免重复 init
 
 const pct = (v) => `${Math.round((v || 0) * 1000) / 10}%`
+const pctOf = (n, total) => (total ? `${Math.round((n / total) * 100)}%` : '0%')
 const short = (s, n = 22) => (s || '').length > n ? s.slice(0, n) + '…' : (s || '')
 
 const PALETTE = ['#2b5fad', '#4a80d4', '#67c23a', '#e6a23c', '#d9534f', '#909399',
@@ -114,16 +120,24 @@ async function loadKb() {
                label: { fontSize: 11, formatter: '{b}' },
                data }],
   })
-  // 灌库覆盖（环形）
-  const synced = kb.value.synced, rest2 = kb.value.pending + kb.value.skipped
+  // 灌库覆盖（双环：法条 / 案例各一环，分母各自总量）
+  const lawSynced = kb.value.synced, lawRest = kb.value.pending + kb.value.skipped
+  const caseSynced = kb.value.case_synced, caseRest = kb.value.case_pending + kb.value.case_skipped
+  const ringLabel = (text, n, total) => ({
+    position: 'center', fontSize: 13, fontWeight: 700, color: '#1f3350',
+    formatter: () => `${text}\n${pctOf(n, total)}`,
+  })
   render(syncRef.value, 'sync', {
     color: ['#67c23a', '#e6a23c'],
     tooltip: { trigger: 'item', formatter: '{b}：{c} 条' },
-    series: [{ type: 'pie', radius: ['58%', '78%'], center: ['50%', '50%'],
-               label: { position: 'center', fontSize: 14, fontWeight: 700,
-                        formatter: () => (kb.value.laws ? `${Math.round(synced / kb.value.laws * 100)}%` : '0%'),
-                        color: '#1f3350' },
-               data: [{ name: '已入向量库', value: synced }, { name: '未入库', value: rest2 }] }],
+    series: [
+      { type: 'pie', radius: ['52%', '72%'], center: ['26%', '50%'],
+        label: ringLabel('法条', lawSynced, kb.value.laws),
+        data: [{ name: '法条已入向量库', value: lawSynced }, { name: '法条未入库', value: lawRest }] },
+      { type: 'pie', radius: ['52%', '72%'], center: ['74%', '50%'],
+        label: ringLabel('案例', caseSynced, kb.value.cases),
+        data: [{ name: '案例已入向量库', value: caseSynced }, { name: '案例未入库', value: caseRest }] },
+    ],
   })
 }
 
@@ -191,7 +205,7 @@ onUnmounted(() => {
 .toolbar .hint { color: #909399; font-size: 13px; }
 .toolbar .spacer { flex: 1; }
 .metric-row {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 18px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 14px; margin-bottom: 18px;
 }
 .metric {
   padding: 18px 20px; border-radius: 14px;

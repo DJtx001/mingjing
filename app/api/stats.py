@@ -31,6 +31,8 @@ def kb_stats(user=Depends(get_current_user)):
             cases = cur.fetchone()[0]
             cur.execute("SELECT vector_synced, COUNT(*) FROM law GROUP BY vector_synced")
             sync = dict(cur.fetchall())  # {0: 待灌, 1: 已灌, 2: 跳过}
+            cur.execute("SELECT vector_synced, COUNT(*) FROM case_ref GROUP BY vector_synced")
+            csync = dict(cur.fetchall())
             cur.execute(
                 "SELECT COALESCE(category, '未分类') AS c, COUNT(*) AS n"
                 " FROM law GROUP BY c ORDER BY n DESC")
@@ -38,6 +40,8 @@ def kb_stats(user=Depends(get_current_user)):
         return {
             "laws": laws, "cases": cases,
             "synced": sync.get(1, 0), "pending": sync.get(0, 0), "skipped": sync.get(2, 0),
+            "case_synced": csync.get(1, 0), "case_pending": csync.get(0, 0),
+            "case_skipped": csync.get(2, 0),
             "categories": categories,
         }
     finally:

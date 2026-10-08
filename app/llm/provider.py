@@ -106,13 +106,17 @@ class ProviderChain:
                 if frag:
                     yield frag
 
-    def chat(self, messages, temperature=0.3):
-        """非流式对话。降级兜底已关闭：云端失败直接报错。"""
+    def chat(self, messages, temperature=0.3, tools=None):
+        """非流式对话。若提供 tools（OpenAI tool schema 列表），返回含 tool_calls 的完整响应。"""
         messages = self._with_context(messages)
         if not self._cloud_available():
             raise RuntimeError("云端模型不可用：API Key 未配置或处于失败冷却中，请稍后重试")
         try:
             llm = self._init_cloud()
+            if tools:
+                llm = llm.bind_tools(tools)
+                result = llm.invoke(messages)
+                return result  # AIMessage，可能含 .tool_calls
             result = llm.invoke(messages)
             return result.content if hasattr(result, "content") else str(result)
         except Exception as e:

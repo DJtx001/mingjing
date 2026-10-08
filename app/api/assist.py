@@ -19,6 +19,153 @@ from app.services import retrieval_service, session_service
 
 router = APIRouter(prefix="/assist", tags=["H-AI助手"])
 
+# ── Function Calling：DB 工具 ──────────────────────────────
+# 当 RAG 无命中且用户提问像是 DB 查询时，让 LLM 决定是否调工具
+
+_DB_QUERY_PATTERN = re.compile(
+    r"(查|搜索|找|检索|统计|多少|列出|列举|显示|展示|搜).{0,15}(案|案例|案子|法条|法律|数据|统计|信息|件)"
+)
+
+DB_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_cases",
+            "description": "按案由、案号、当事人名等关键词搜索案例库",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "搜索关键词"}
+                },
+                "required": ["keyword"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_case_detail",
+            "description": "按 ID 查询某篇案例的详细内容（含事实、过程、结果、评析）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "case_id": {
+                        "type": "integer",
+                        "description": "案例的数字 ID（search_cases 返回的 ID）",
+                    }
+                },
+                "required": ["case_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_laws",
+            "description": "按关键词搜索知识库中的法条",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "搜索关键词，如法条内容或主题"},
+                },
+                "required": ["keyword"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_kb_stats",
+            "description": "查询知识库统计：法条总数、案例总数",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+
+def _exec_db_tool(name: str, args: dict) -> str:
+    """执行 DB 工具，返回格式化的文本结果。"""
+    import pymysql
+    from app.core.config import config
+    conn = pymysql.connect(**config.MYSQL)
+    try:
+        with conn.cursor() as cur:
+            if name == "search_cases":
+                kw = args.get("keyword", "")
+                cur.execute("SELECT id, title FROM case_ref WHERE title LIKE %s LIMIT 6",
+                            (f"%{kw}%",))
+                rows = cur.fetchall()
+                if not rows:
+                    return f"未找到标题含「{kw}」的案例。"
+                return "\n".join(f"  ID={r[0]} {r[1]}" for r in rows)
+
+            if name == "get_case_detail":
+                cid = int(args["case_id"])
+                cur.execute(
+                    "SELECT id, title, fact, process, result, comment FROM case_ref WHERE id=%s",
+                    (cid,),
+                )
+                r = cur.fetchone()
+                if not r:
+                    return f"未找到 ID={cid} 的案例。"
+                return (
+                    f"【案例 {r[1]}】\n"
+                    f"事实：{(r[2] or '无')[:500]}\n\n"
+                    f"过程：{(r[3] or '无')[:300]}\n\n"
+                    f"结果：{(r[4] or '无')[:300]}\n\n"
+                    f"评析：{(r[5] or '无')[:300]}"
+                )
+
+            if name == "search_laws":
+                kw = args.get("keyword", "")
+                cur.execute(
+                    "SELECT id, source, article, text FROM law "
+                    "WHERE source LIKE %s OR text LIKE %s LIMIT 5",
+                    (f"%{kw}%", f"%{kw}%"),
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return f"未找到含「{kw}」的法条。"
+                return "\n\n".join(
+                    f"《{r[1]}》第{r[2]}条\n{r[3][:300]}" for r in rows
+                )
+
+            if name == "get_kb_stats":
+                cur.execute("SELECT COUNT(*) FROM law")
+                laws = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM case_ref")
+                cases = cur.fetchone()[0]
+                return f"知识库现有法条 {laws} 条、案例 {cases} 条。"
+    finally:
+        conn.close()
+    return f"未知工具：{name}"
+
+
+def _try_function_calling(messages: list, user_message: str) -> tuple[bool, list]:
+    """当 RAG 无命中时，尝试让 LLM 用 DB 工具回答。返回 (是否已处理, 新消息列表)。"""
+    if not _DB_QUERY_PATTERN.search(user_message):
+        return False, messages
+
+    from copy import deepcopy
+    msgs = deepcopy(messages)
+    msgs.append({"role": "user", "content": user_message})
+    try:
+        resp = provider.chat(msgs, tools=DB_TOOLS)
+    except Exception:
+        return False, messages  # provider 失败不回退
+
+    tool_calls = getattr(resp, "tool_calls", None)
+    if not tool_calls:
+        return False, messages  # LLM 选择不用工具
+
+    tc = tool_calls[0]
+    result = _exec_db_tool(tc["name"], tc["args"])
+    msgs.append({
+        "role": "system",
+        "content": f"以下是数据库查询结果，请据此回答用户问题：\n{result}",
+    })
+    return True, msgs
+
 # ---------- 表结构（幂等创建） ----------
 # assist_session / assist_message 为早期手工建表，此处补录基线 DDL 使新环境可自动建齐
 # （CREATE IF NOT EXISTS 对已存在的表无副作用）；assist_adoption 为采纳回流新表。
@@ -296,13 +443,36 @@ def _sse_stream(session_id: str, body: ChatRequest):
         yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
         yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
         return
+
+    # ---- Function Calling：RAG 无命中时让 LLM 尝试 DB 工具 ----
     if not context:
-        # 无命中：不调 LLM，确定性兜底（时间类直答；其余固定文案，杜绝编造与说教式发挥）
+        handled, fc_messages = _try_function_calling(messages, body.message)
+        if handled:
+            t0 = time.time()
+            full_text = []
+            try:
+                for chunk in provider.stream(fc_messages):
+                    full_text.append(chunk)
+                    yield f"event:delta\ndata: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                yield f"event:error\ndata: {json.dumps({'error': {'code': 'LLM_001', 'message': str(e)}}, ensure_ascii=False)}\n\n"
+                return
+            latency_ms = int((time.time() - t0) * 1000)
+            text = "".join(full_text)
+            yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
+            session_service.append_message(
+                session_id, "assistant", text,
+                reply_id=reply_id, citations=[],
+                context={"model": provider_model(), "provider": "cloud",
+                         "latency_ms": latency_ms, "no_evidence": 0},
+            )
+            yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
+            return
+
+        # 无命中兜底（含问候/时间/固定文案）
         reply = _fallback_reply(body.message)
-        # 时间兜底算"有回答"，只有"暂无依据"文案计入库缺口指标（先判定再叠加案件卡片）
         is_no_evidence = 1 if reply == NO_HIT_REPLY else 0
         if is_no_evidence and case:
-            # 有案件上下文：先给本案卡片（问"这个案子"能答事实），再声明法律依据缺失
             reply = _case_block(case) + "\n\n" + reply
         session_service.append_message(
             session_id, "assistant", reply, reply_id=reply_id, citations=[],
