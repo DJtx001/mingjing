@@ -1,0 +1,52 @@
+# 明镜·云端部署（单机三容器）｜ 用法：docker compose up -d --build
+# 说明：
+#  - 云端 .env 的 MySQL_HOST=mysql、REDIS_HOST=redis（容器服务名），与本地开发 .env（127.0.0.1）不同
+#  - MySQL 密码复用 .env 的 MySQL_PASSWORD（compose 自动读根目录 .env 做变量替换），两处不会不一致
+#  - mysql/redis 不映射端口到宿主（仅容器内网，公网不可达）
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MySQL_PASSWORD:-mingjing@2026}
+      MYSQL_DATABASE: ${MySQL_DATABASE:-mingjing}
+      TZ: Asia/Shanghai
+    command:
+      - mysqld
+      - --default-time-zone=+08:00
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"          # 大陆服务器：安全组放行 8000，浏览器 http://<公网IP>:8000 直访
+    env_file: .env
+    environment:
+      TZ: Asia/Shanghai
+      # environment 优先级高于 env_file：容器内统一指向服务名——
+      # 本地 / 云端 .env 无需区分 host（本地开发保持 127.0.0.1 即可）
+      MySQL_HOST: mysql
+      REDIS_HOST: redis
+    volumes:
+      - ./data/chroma:/app/Chromadb   # 向量库（430MB，从本地迁移；勿云端重灌，embedding 按量计费）
+    restart: unless-stopped

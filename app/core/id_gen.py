@@ -13,3 +13,12 @@ def gen_session_id() -> str:
     （2^48 种可能，碰撞概率可忽略）。
     """
     return "sess_" + uuid.uuid4().hex[:12]
+
+
+def gen_doc_id() -> str:
+    """生成文书 ID：doc_9f3a01b2（doc_ + 8 位十六进制，共 12 字符）。
+
+    文书表有 uk_case_type(case_id,type) 保证一案每类一份，doc_id 仅作稳定标识
+    （重生成时保留原 ID，签发/注解按它关联）。
+    """
+    return "doc_" + uuid.uuid4().hex[:8]

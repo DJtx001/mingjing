@@ -38,7 +38,13 @@ export async function request(url, options = {}) {
   const token = getToken()
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(url, { ...options, headers })
+  // 网络层失败（后端未启动/断网）给明确的中文错误，避免各页面静默空数据或英文报错
+  let res
+  try {
+    res = await fetch(url, { ...options, headers })
+  } catch {
+    throw new Error('无法连接服务：请确认后端已启动（启动后刷新页面重试）')
+  }
 
   // 401：token 失效或没登录 → 清掉本地会话，刷新页面让用户回登录页
   if (res.status === 401) {

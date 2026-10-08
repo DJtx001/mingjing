@@ -26,8 +26,8 @@
         <div class="menu-item" :class="{ active: currentView === 'newcase' }" @click="currentView = 'newcase'"><span class="menu-icon">📝</span>新建受理</div>
         <div class="menu-item" :class="{ active: currentView === 'stats' }" @click="currentView = 'stats'"><span class="menu-icon">📊</span>统计看板</div>
         <div class="menu-item" :class="{ active: currentView === 'logs' }" @click="currentView = 'logs'"><span class="menu-icon">📜</span>操作日志</div>
-        <div class="menu-item"><span class="menu-icon">⏳</span>待开发,可使用ai<el-badge class="badge" :value="counts.documents_ready" type="warning"></el-badge></div>
-        <div class="menu-item"><span class="menu-icon">🧐</span>待开发,可使用ai<el-badge class="badge" :value="counts.pending_review" type="danger"></el-badge></div>
+        <div class="menu-item" :class="{ active: currentView === 'docs' }" @click="currentView = 'docs'"><span class="menu-icon">📄</span>文书签发 <el-badge class="badge" :value="counts.doc_pending" type="warning"></el-badge></div>
+        <div class="menu-item" :class="{ active: currentView === 'review' }" @click="currentView = 'review'"><span class="menu-icon">🧐</span>复核工作台 <el-badge class="badge" :value="counts.review_pending" type="danger"></el-badge></div>
 
       </aside>
       <!-- 主内容区：按 currentView 切换页面 -->
@@ -38,9 +38,12 @@
           <p class="page-desc">{{ pageMeta.desc }}</p>
         </div>
         <CaseListView v-if="currentView === 'cases'" :open-case-id="pendingOpenCase"
-                      @counts="onCounts" @open-case="onOpenCase" @open-case-ai="onOpenCaseAi" />
+                      @counts="onCounts" @open-case="onOpenCase" @open-case-ai="onOpenCaseAi"
+                      @go-review="onGoReview" />
         <NewCaseView v-else-if="currentView === 'newcase'" @created="onCaseCreated" />
         <KnowledgeBaseView v-else-if="currentView === 'kb'" />
+        <DocumentView v-else-if="currentView === 'docs'" @doc-count="onDocCount" />
+        <ReviewView v-else-if="currentView === 'review'" ref="reviewViewRef" @queue-count="onQueueCount" />
         <OperationLogView v-else-if="currentView === 'logs'" />
         <StatsView v-else-if="currentView === 'stats'" />
       </main>
@@ -53,10 +56,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import CaseListView from './views/CaseListView.vue'
 import NewCaseView from './views/NewCaseView.vue'
 import KnowledgeBaseView from './views/KnowledgeBaseView.vue'
+import DocumentView from './views/DocumentView.vue'
+import ReviewView from './views/ReviewView.vue'
 import OperationLogView from './views/OperationLogView.vue'
 import StatsView from './views/StatsView.vue'
 import AiAssistantDrawer from './components/AiAssistantDrawer.vue'
@@ -71,8 +76,10 @@ const PAGE_META = {
   cases: { title: '我的案件', desc: '案件受理工作台，支持按受理节点筛选与流转处理' },
   newcase: { title: '新建受理', desc: '录入当事人陈述，AI 即时抽取要素（三层溯源·原文引句）' },
   kb: { title: '知识库与规则', desc: '法条 / 案例文件、核验规则与要素 Schema 管理' },
+  docs: { title: '文书签发', desc: '待签发案件队列：生成四产出物（案件底情 / 核验报告 / 受理登记表 / 类案参考），核对溯源后签发生效' },
+  review: { title: '复核工作台', desc: '灰区案件人工兜底：底情与核验对照 → 裁决（通过 / 退回补充 / 不予受理），全程留档回流' },
   logs: { title: '操作日志', desc: '系统操作审计：登录与知识库操作全程留痕' },
-  stats: { title: '统计看板', desc: '知识库与 AI 助手运营数据' },
+  stats: { title: '统计看板', desc: '知识库与 AI 助手运营数据（全体用户汇总口径，非仅本人）' },
 }
 const pageMeta = computed(() => PAGE_META[currentView.value] || PAGE_META.cases)
 
@@ -139,11 +146,31 @@ function onLogout() {
 }
 
 const counts = ref({
-  all: 0, draft: 0, awaiting_confirmation: 0,
-  pending_review: 0, documents_ready: 0, closed: 0,
+  all: 0, draft: 0, awaiting_confirmation: 0, pending_review: 0,
+  documents_ready: 0, auto_passed: 0, closed: 0, issued: 0, rejected: 0, archived: 0,
+  reject_suggested: 0,
+  doc_pending: 0,      // 徽章「文书签发」：待签发 + 意见稿（与文书签发页列表条数一致）
+  review_pending: 0,   // 徽章「复核工作台」：待裁决任务数（与复核队列条数一致）
 })
 
 function onCounts(value) {
   counts.value = value
+}
+
+// 文书签发页自报待处理总数（documents_ready + reject_suggested，与页面列表一致）
+function onDocCount(n) {
+  counts.value = { ...counts.value, doc_pending: n }
+}
+
+// 复核工作台自报队列数（裁决后同步侧边栏徽章）
+function onQueueCount(n) {
+  counts.value = { ...counts.value, review_pending: n }
+}
+
+// 案件列表「去复核」：切到复核工作台并聚焦该案
+const reviewViewRef = ref(null)
+function onGoReview(row) {
+  currentView.value = 'review'
+  nextTick(() => reviewViewRef.value?.focusCase(row.case_id))
 }
 </script>

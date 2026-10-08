@@ -1,6 +1,7 @@
 """B组 案件接口（严格对齐《受理Agent接口文档》V1.1 B组）
 列表字段：case_id/dispute_type/applicant_name/current_step/status/status_label/assignee
 """
+import json
 import random
 
 import pymysql
@@ -67,18 +68,23 @@ def init_tables():
 # ---------- 状态语义（沿用设计文档状态机命名；中文 label 与分流徽章由接口层映射） ----------
 _STATUS_LABEL = {
     "draft": "草稿",
+    "extracting": "要素抽取中",
     "awaiting_confirmation": "要素确认中",
     "verifying": "核验中",
+    "auto_passed": "核验通过 · 待生成文书",
     "pending_review": "人工复核",
     "reject_suggested": "不予受理意见（草案）",
-    "documents_ready": "文书签发",
+    "rejected": "不予受理（已签发）",
+    "documents_ready": "待签发",
     "issued": "已签发",
     "closed": "已结案",
 }
 # 核验分流徽章由 status 派生（核验模块未开工，不做独立字段）
 _TRIAGE = {
+    "auto_passed": "pass",
     "pending_review": "review",
     "reject_suggested": "reject",
+    "rejected": "reject",
     "documents_ready": "pass",
     "issued": "pass",
     "closed": "pass",
@@ -117,7 +123,10 @@ def _seed_if_empty():
 
 
 def _case_item(r: dict) -> dict:
-    """行 → 列表项（对齐前端字段：status_label 中文、triage 分流徽章、ISO 时间）"""
+    """行 → 列表项（对齐前端字段：status_label 中文、triage 分流徽章、ISO 时间）。
+
+    review_pending：该案是否有待裁决的复核任务——前端据此区分"去复核/等待确认/生成通知书"。
+    """
     return {
         "case_id": r["case_id"],
         "dispute_type": r["dispute_type"],
@@ -126,6 +135,7 @@ def _case_item(r: dict) -> dict:
         "status_label": _STATUS_LABEL.get(r["status"], r["status"]),
         "triage": _TRIAGE.get(r["status"]),
         "assignee_user_id": r["assignee_user_id"],
+        "review_pending": bool(r.get("review_pending")),
         "created_at": r["created_at"],
         "updated_at": r["updated_at"],
     }
@@ -213,7 +223,9 @@ async def list_cases(status: str = "", dispute_type: str = "", keyword: str = ""
             cur.execute(f"SELECT COUNT(*) AS n FROM case_info {cond}", args)
             total = cur.fetchone()["n"]
             cur.execute(
-                f"SELECT * FROM case_info {cond} ORDER BY updated_at DESC, case_id DESC LIMIT %s OFFSET %s",
+                f"SELECT *, EXISTS(SELECT 1 FROM review_task rt WHERE rt.case_id = case_info.case_id"
+                f" AND rt.status = 'pending') AS review_pending"
+                f" FROM case_info {cond} ORDER BY updated_at DESC, case_id DESC LIMIT %s OFFSET %s",
                 args + [page_size, (page - 1) * page_size])
             rows = cur.fetchall()
         return {"items": [_case_item(r) for r in rows],
@@ -229,7 +241,10 @@ async def get_case(case_id: str, user=Depends(get_current_user)):
     conn = _conn()
     try:
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT * FROM case_info WHERE case_id=%s", (case_id,))
+            cur.execute(
+                "SELECT *, EXISTS(SELECT 1 FROM review_task rt WHERE rt.case_id = case_info.case_id"
+                " AND rt.status = 'pending') AS review_pending"
+                " FROM case_info WHERE case_id=%s", (case_id,))
             row = cur.fetchone()
             if not row:
                 return {"error": {"code": "CASE_004", "message": "案件不存在"}}
@@ -247,10 +262,24 @@ async def get_case(case_id: str, user=Depends(get_current_user)):
             cur.execute("SELECT level FROM verification_report WHERE case_id=%s ORDER BY id DESC LIMIT 1",
                         (case_id,))
             vrow = cur.fetchone()
+            # 复核退回补充（最近一条 supplement 裁决）：受理员在要素确认页据此补询
+            cur.execute("SELECT reason, questions, created_at FROM review_decision"
+                        " WHERE case_id=%s AND decision='supplement' ORDER BY id DESC LIMIT 1",
+                        (case_id,))
+            rq = cur.fetchone()
+            if rq:
+                qs = rq["questions"]
+                if isinstance(qs, str):
+                    qs = json.loads(qs) if qs else []
+                review_followup = {"reason": rq["reason"], "questions": qs or [],
+                                   "at": str(rq["created_at"])}
+            else:
+                review_followup = None
         case_item = _case_item(row)
         case_item["narrative"] = row.get("narrative") or ""
         return {"case": case_item, "notes": notes, "history": history,
                 "elements_count": elements_count,
-                "verification_level": vrow["level"] if vrow else None}
+                "verification_level": vrow["level"] if vrow else None,
+                "review_followup": review_followup}
     finally:
         conn.close()

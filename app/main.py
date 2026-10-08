@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 
-from app.api import cases, assist, auth, intake, kb, logs, stats
+from app.api import cases, assist, auth, intake, kb, logs, stats, documents, reviews, mediation
 
 logger = logging.getLogger("warmup")
 
@@ -100,7 +100,9 @@ class CacheControlMiddleware:
                 headers = message.setdefault("headers", [])
                 ctype = next((v for k, v in headers if k.lower() == b"content-type"), b"")
                 if b"text/html" in ctype:
-                    headers.append((b"cache-control", b"no-cache"))
+                    # no-store：连缓存副本都不留。每次 build 后 chunk 文件名变化，
+                    # 浏览器若持旧 index.html，其引用的旧 chunk 已被删除 → 白屏
+                    headers.append((b"cache-control", b"no-store"))
                 elif path.startswith("/assets/"):
                     headers.append((b"cache-control", b"public, max-age=31536000, immutable"))
             await send(message)
@@ -113,6 +115,9 @@ app.add_middleware(CacheControlMiddleware)
 app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(intake.router)
+app.include_router(documents.router)
+app.include_router(reviews.router)
+app.include_router(mediation.router)
 app.include_router(assist.router)
 app.include_router(kb.router)
 app.include_router(logs.router)
@@ -147,6 +152,24 @@ try:
     assist.init_tables()
 except Exception as _e:
     logger.warning("assist 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# 文书表幂等建表（document / document_annotation）
+try:
+    documents.init_tables()
+except Exception as _e:
+    logger.warning("documents 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# 复核表幂等建表（review_task / review_decision）+ 存量分流案件兜底入队
+try:
+    reviews.init_tables()
+except Exception as _e:
+    logger.warning("reviews 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
+
+# 调解结果表幂等建表（mediation_result）
+try:
+    mediation.init_tables()
+except Exception as _e:
+    logger.warning("mediation 建表失败（不影响启动，接口调用时会报数据库错误）: %s", _e)
 
 # 前端为 Vite 工程（frontend/）：生产产物在 frontend/dist，由后端同源托管
 # 必须放在所有 API 路由注册之后；dist 不存在时（未执行 npm run build）给出提示

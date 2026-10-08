@@ -1,6 +1,7 @@
 <template>
+  <!-- 注意：此处不能包裸 <template>（无指令）——Vue 3 会渲染为原生 template 元素，
+       其 UA 样式 display:none 会让整页内容不参与布局（曾导致"统计看板打不开"） -->
   <div class="stats-page">
-    <template>
       <div class="toolbar">
         <span class="hint">数据窗口</span>
         <el-select v-model="days" size="small" style="width: 110px" @change="loadAssist">
@@ -24,11 +25,11 @@
         </div>
         <div class="metric">
           <div class="num">{{ assist.sessions }}</div>
-          <div class="label">AI 会话数</div>
+          <div class="label">全局AI会话数</div>
         </div>
         <div class="metric">
           <div class="num">{{ assist.questions }}</div>
-          <div class="label">提问次数</div>
+          <div class="label">全局提问次数</div>
         </div>
         <div class="metric">
           <div class="num">{{ pct(assist.adoption_rate) }}</div>
@@ -61,7 +62,6 @@
           <div ref="syncRef" class="chart"></div>
         </div>
       </div>
-    </template>
   </div>
 </template>
 
@@ -191,15 +191,26 @@ onUnmounted(() => {
 .toolbar .hint { color: #909399; font-size: 13px; }
 .toolbar .spacer { flex: 1; }
 .metric-row {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px;
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 18px;
 }
 .metric {
-  padding: 16px 18px; border-radius: 12px;
-  background: linear-gradient(160deg, #f6f9fe 0%, #eef4fd 100%);
-  border: 1px solid #e6eef9;
+  padding: 18px 20px; border-radius: 14px;
+  background: linear-gradient(160deg, #f8fbff 0%, #eaf2fd 100%);
+  border: 1px solid #e2ecfa;
+  box-shadow: 0 2px 10px rgba(43, 95, 173, 0.06);
+  transition: transform .2s ease, box-shadow .2s ease;
 }
-.metric .num { font-size: 22px; font-weight: 700; color: #2b5fad; letter-spacing: 0.5px; }
-.metric .label { margin-top: 4px; font-size: 12.5px; color: #6b7a90; }
+.metric:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(43, 95, 173, 0.16);
+}
+.metric .num {
+  font-size: 26px; font-weight: 800; letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #2f66b8 0%, #4a80d4 55%, #5a90e0 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.metric .label { margin-top: 6px; font-size: 12.5px; color: #6b7a90; letter-spacing: 0.5px; }
 .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .chart-card {
   border: 1px solid #eef1f6; border-radius: 12px; padding: 14px 16px 8px;

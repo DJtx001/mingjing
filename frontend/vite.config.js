@@ -40,6 +40,9 @@ export default defineConfig({
       },
       '/admin': { target: 'http://localhost:8000', changeOrigin: true },
       '/stats': { target: 'http://localhost:8000', changeOrigin: true },
+      // 复核工作台（E 组）——新增一级路由必须同步在此登记，
+      // 否则 dev 下请求落到 SPA 兜底返回 index.html（"Unexpected token '<'"报错，本项目踩过两次）
+      '/reviews': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
   build: {

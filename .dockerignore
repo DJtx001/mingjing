@@ -1,0 +1,16 @@
+# 构建上下文瘦身（关键：否则 Chroma 430MB / venv / node_modules 全进 build 上下文，极慢）
+.venv/
+venv/
+Chromadb/
+data/
+scripts/
+erro/
+.idea/
+.git/
+frontend/node_modules/
+frontend/legacy/
+frontend/test/
+*.md
+账号密码清单.md
+
+# 注意：frontend/dist 必须包含（镜像内后端同源托管），不要忽略

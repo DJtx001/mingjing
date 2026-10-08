@@ -135,6 +135,16 @@ def confirm_elements(case_id: str, body: ElementsConfirm, user=Depends(get_curre
     try:
         stats = {"confirmed_count": 0, "modified_count": 0, "missing_count": 0}
         with conn.cursor() as cur:
+            # 守卫：已签发/已办结案件不可再改要素——否则重核验会把状态打回，
+            # 与已签发的文书脱节（文书按签发时快照算数）
+            cur.execute("SELECT status FROM case_info WHERE case_id=%s", (case_id,))
+            case_row = cur.fetchone()
+            if not case_row:
+                raise HTTPException(404, "案件不存在")
+            if case_row["status"] in ("issued", "rejected", "closed"):
+                raise HTTPException(409, {"code": "DOC_005",
+                    "message": "案件已签发或已办结，不可再修改要素；如需变更请新建案件"})
+
             for act in body.elements:
                 cur.execute("SELECT * FROM element WHERE element_id=%s AND case_id=%s", (act.element_id, case_id))
                 el = cur.fetchone()

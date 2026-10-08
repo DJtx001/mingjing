@@ -137,8 +137,8 @@ body {
 .page-head h2 { margin: 0; font-size: 20px; font-weight: 700; color: #20304a; letter-spacing: 1px; }
 .page-head .page-desc { margin: 5px 0 0; font-size: 12.5px; color: #8a97ac; letter-spacing: 0.3px; }
 .card {
-  background: #fff; border-radius: var(--radius); padding: 20px 24px;
-  box-shadow: var(--shadow-card);
+  background: #fff; border-radius: 14px; padding: 22px 26px;
+  box-shadow: 0 4px 22px rgba(30, 50, 90, 0.08);
 }
 
 /* ===== 表格观感 ===== */
@@ -216,3 +216,146 @@ body {
 .el-message-box__btns .el-button--primary {
   box-shadow: 0 3px 10px rgba(43, 95, 173, 0.25);
 }
+
+/* ============================================================
+   全局大气化升级（2026-10-08）
+   设计原则：政务庄重 + 现代质感——实心按钮统一渐变与投影、
+   留白更舒展、圆角成体系（8/10/14/16）、阴影两级（贴地/悬浮）
+   ============================================================ */
+
+/* ===== 按钮体系：所有实心按钮统一渐变 + 投影 + 悬浮上浮 ===== */
+.el-button {
+  border-radius: 9px;
+  font-weight: 500;
+  transition: transform .18s ease, box-shadow .18s ease,
+              background-color .18s ease, border-color .18s ease, color .18s ease;
+}
+.el-button--small { padding: 7px 14px; border-radius: 8px; font-size: 12.5px; }
+.el-button--large { border-radius: 11px; }
+
+/* 主按钮：品牌蓝渐变 */
+.el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-bg-color: #2f66b8;
+  --el-button-hover-bg-color: #3a74cb;
+  --el-button-active-bg-color: #224c8a;
+  background-image: linear-gradient(135deg, #2f66b8 0%, #4a80d4 100%);
+  border: none;
+  box-shadow: 0 3px 12px rgba(43, 95, 173, 0.3);
+}
+.el-button--primary:not(.is-link):not(.is-text):not(.is-plain):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(43, 95, 173, 0.42);
+}
+.el-button--primary:not(.is-link):not(.is-text):not(.is-plain):active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(43, 95, 173, 0.32);
+}
+
+/* 成功：绿渐变 */
+.el-button--success:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-bg-color: #57a83f;
+  --el-button-hover-bg-color: #63b94a;
+  --el-button-active-bg-color: #47892f;
+  background-image: linear-gradient(135deg, #57a83f 0%, #6cc551 100%);
+  border: none;
+  box-shadow: 0 3px 12px rgba(103, 194, 58, 0.3);
+}
+.el-button--success:not(.is-link):not(.is-text):not(.is-plain):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(103, 194, 58, 0.42);
+}
+
+/* 警示：橙渐变 */
+.el-button--warning:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-bg-color: #e0a63c;
+  --el-button-hover-bg-color: #eeb84e;
+  --el-button-active-bg-color: #c98f28;
+  background-image: linear-gradient(135deg, #e0a63c 0%, #eebd55 100%);
+  border: none;
+  box-shadow: 0 3px 12px rgba(230, 162, 60, 0.3);
+}
+.el-button--warning:not(.is-link):not(.is-text):not(.is-plain):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(230, 162, 60, 0.42);
+}
+
+/* 危险：红渐变 */
+.el-button--danger:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-bg-color: #e05555;
+  --el-button-hover-bg-color: #ef6a63;
+  --el-button-active-bg-color: #c84343;
+  background-image: linear-gradient(135deg, #e05555 0%, #f0796f 100%);
+  border: none;
+  box-shadow: 0 3px 12px rgba(217, 83, 79, 0.3);
+}
+.el-button--danger:not(.is-link):not(.is-text):not(.is-plain):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(217, 83, 79, 0.42);
+}
+
+/* 禁用态不参与动效与投影 */
+.el-button.is-disabled { transform: none !important; box-shadow: none !important; }
+
+/* plain 描边按钮：描边更实、底色更浅，保持与实心按钮同族的精致感 */
+.el-button.is-plain:not(.is-link) {
+  border-width: 1.2px;
+  background-color: #fff;
+}
+.el-button.is-plain:not(.is-link):hover { transform: translateY(-1px); }
+
+/* ===== 页头：标题前竖线装饰，板块感更强 ===== */
+.page-head h2 { display: flex; align-items: center; gap: 11px; font-size: 21px; letter-spacing: 1.2px; }
+.page-head h2::before {
+  content: '';
+  width: 4px; height: 20px; border-radius: 2px; flex: none;
+  background: linear-gradient(180deg, #4a80d4 0%, #2b5fad 100%);
+  box-shadow: 0 2px 8px rgba(43, 95, 173, 0.45);
+}
+.page-head .page-desc { margin-left: 15px; }
+
+/* ===== 表格：表头渐变、行高舒展、悬停更明显 ===== */
+.el-table th.el-table__cell {
+  padding: 12px 0;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.6px;
+  background: linear-gradient(180deg, #f8fafd 0%, #f2f6fc 100%) !important;
+  border-bottom: 1px solid #e6ecf5 !important;
+}
+.el-table td.el-table__cell { padding: 11px 0; font-size: 13px; }
+.el-table { --el-table-row-hover-bg-color: #f4f8fe; }
+
+/* ===== 弹窗：大圆角 + 分层阴影 + 头部底边线 ===== */
+.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 22px 64px rgba(15, 30, 60, 0.26);
+}
+.el-dialog__header {
+  margin-right: 0 !important;
+  padding: 16px 22px !important;
+  border-bottom: 1px solid #eef2f8;
+}
+.el-dialog__body { padding: 18px 22px !important; }
+
+/* ===== 输入与选择：圆角统一 + 聚焦光晕 ===== */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: 10px;
+  transition: box-shadow .2s ease;
+}
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1.5px var(--el-color-primary) inset,
+              0 2px 10px rgba(43, 95, 173, 0.14);
+}
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1.5px var(--el-color-primary) inset,
+              0 2px 10px rgba(43, 95, 173, 0.14);
+}
+
+/* ===== 标签 / 分页 / 全局消息 ===== */
+.el-tag { border-radius: 7px; font-weight: 500; }
+.el-message { border-radius: 12px; box-shadow: 0 10px 32px rgba(15, 30, 60, 0.18); }
+.el-pagination { --el-pagination-button-bg-color: #f4f7fc; }

@@ -6,7 +6,8 @@
       <el-tab-pane :label="'要素确认中 ' + counts.awaiting_confirmation" name="awaiting_confirmation"></el-tab-pane>
       <el-tab-pane :label="'待复核 ' + counts.pending_review" name="pending_review"></el-tab-pane>
       <el-tab-pane :label="'待签发 ' + counts.documents_ready" name="documents_ready"></el-tab-pane>
-      <el-tab-pane :label="'已结案 ' + counts.closed" name="closed"></el-tab-pane>
+      <el-tab-pane :label="'调解中 ' + counts.issued" name="issued"></el-tab-pane>
+      <el-tab-pane :label="'已办结 ' + counts.archived" name="archived"></el-tab-pane>
     </el-tabs>
     <el-table :data="cases" size="small" stripe v-loading="loading"
               @row-click="openCase" style="cursor: pointer">
@@ -25,21 +26,34 @@
       <el-table-column label="更新时间" width="150">
         <template #default="{ row }">{{ (row.updated_at || '').slice(5, 16).replace('T', ' ') }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="225">
+      <el-table-column label="操作" width="290">
         <template #default="{ row }">
           <el-button type="primary" size="small" plain
                      @click.stop="emit('open-case-ai', row)">🤖 AI 办案</el-button>
-          <el-button v-if="row.status === 'reject_suggested'" type="danger" size="small"
-                     @click.stop="openCase(row)">人工确认</el-button>
-          <el-button v-else-if="row.status === 'closed'" link type="primary" size="small"
-                     @click.stop="openCase(row)">查看档案</el-button>
+          <!-- 待复核/待确认驳回：引导到复核工作台（受理员看到只读提示） -->
+          <el-button v-if="row.status === 'pending_review' || (row.status === 'reject_suggested' && row.review_pending)"
+                     :type="canReview ? 'warning' : 'info'" size="small" plain
+                     :disabled="!canReview" @click.stop="goReview(row)">
+            🧐 {{ canReview ? '去复核' : '复核中' }}</el-button>
+          <!-- 复核已确认驳回：下一步是生成并签发通知书 -->
+          <el-button v-else-if="row.status === 'reject_suggested'"
+                     type="primary" size="small" plain
+                     @click.stop="openCase(row, 'docs')">📄 生成通知书</el-button>
+          <el-button v-else-if="row.status === 'issued'" type="success" size="small" plain
+                     @click.stop="openCase(row, 'mediation')">⚖ 调解结案</el-button>
+          <el-button v-else-if="['closed', 'rejected'].includes(row.status)"
+                     link type="primary" size="small" @click.stop="openCase(row)">查看档案</el-button>
           <el-button v-else link type="primary" size="small" @click.stop="openCase(row)">继续处理</el-button>
+          <!-- 文书入口：核验通过/待签发，直达文书 tab -->
+          <el-button v-if="['auto_passed', 'documents_ready'].includes(row.status)"
+                     type="success" size="small" plain
+                     @click.stop="openCase(row, 'docs')">📄 文书</el-button>
         </template>
       </el-table-column>
     </el-table>
   </div>
 
-  <!-- 案件工作台：信息 / 案情 / 要素确认（页面②） / 核验 / 备注 -->
+  <!-- 案件工作台：信息 / 案情 / 要素确认（页面②） / 核验 / 文书 / 备注 -->
   <el-dialog v-model="detailVisible" width="820px" top="5vh" destroy-on-close>
     <template #header>
       <span class="detail-title">{{ detail.case?.case_id || '' }}</span>
@@ -53,6 +67,8 @@
       <el-tabs v-model="dtab">
         <!-- 信息 -->
         <el-tab-pane label="信息" name="info">
+          <!-- 下一步指引：把"当前节点该做什么"说清楚（减少"点了没反应"的困惑） -->
+          <div v-if="nextStepText" class="next-step"><span class="ns-icon">→</span>{{ nextStepText }}</div>
           <div v-if="detail.case" class="case-info">
             <div class="info-item"><span class="k">纠纷类型</span>{{ detail.case.dispute_type }}</div>
             <div class="info-item"><span class="k">当事人</span>{{ detail.case.applicant_name }}</div>
@@ -84,6 +100,12 @@
         <!-- 要素确认（页面②核心：原文引句 + 人工确认回环） -->
         <el-tab-pane :label="`要素确认（${elements.length}）`" name="elements">
           <template v-if="elements.length">
+            <div v-if="detail.reviewFollowup" class="rv-followup">
+              <b>复核补充要求</b>：{{ detail.reviewFollowup.reason }}
+              <ul v-if="detail.reviewFollowup.questions?.length">
+                <li v-for="(q, i) in detail.reviewFollowup.questions" :key="i">{{ q }}</li>
+              </ul>
+            </div>
             <div class="el-ops-tip">
               核对每项要素与其原文依据，标记确认 / 修正 / 待补后提交，系统将自动核验分流
             </div>
@@ -148,6 +170,16 @@
           <el-empty v-else description="尚未核验——在「要素确认」页提交后自动触发" :image-size="70" />
         </el-tab-pane>
 
+        <!-- 文书（四产出物生成 + 签发；控件与「文书签发」页共用 DocumentPanel） -->
+        <el-tab-pane label="文书" name="docs">
+          <DocumentPanel v-if="detail.case" :case-id="detail.case.case_id" @changed="onDocsChanged" />
+        </el-tab-pane>
+
+        <!-- 调解结果与协议书（页面⑤：录入 → 纯模板生成 → 签发结案） -->
+        <el-tab-pane label="调解" name="mediation">
+          <MediationPanel v-if="detail.case" :case-id="detail.case.case_id" @changed="onDocsChanged" />
+        </el-tab-pane>
+
         <!-- 备注（AI 采纳回流落点） -->
         <el-tab-pane :label="`备注（${detail.notes.length}）`" name="notes">
           <div class="notes-head">
@@ -172,22 +204,29 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { fetchCases, fetchCaseDetail } from '../api/cases.js'
+import { getUser } from '../api/http.js'
 import { fetchElements, confirmElements, fetchVerification, fetchClarify } from '../api/intake.js'
+import { fetchReviewCount } from '../api/reviews.js'
+import DocumentPanel from '../components/DocumentPanel.vue'
+import MediationPanel from '../components/MediationPanel.vue'
 
 const props = defineProps({
   openCaseId: { type: String, default: null },   // 新建受理成功后自动打开的案号
 })
 
-const emit = defineEmits(['counts', 'open-case', 'open-case-ai'])
+const emit = defineEmits(['counts', 'open-case', 'open-case-ai', 'go-review'])
+
+// 复核权限（决定"去复核"按钮可点还是只读提示；后端 require_reviewer 强校验兜底）
+const canReview = ['reviewer', 'admin'].includes(getUser()?.role)
 
 const loading = ref(false)
 const cases = ref([])
 const tab = ref('all')
 const counts = ref({
-  all: 0, draft: 0, awaiting_confirmation: 0,
-  pending_review: 0, documents_ready: 0, closed: 0,
+  all: 0, draft: 0, awaiting_confirmation: 0, pending_review: 0,
+  documents_ready: 0, auto_passed: 0, closed: 0, issued: 0, rejected: 0, archived: 0,
 })
 
 const LEVEL_META = {
@@ -204,7 +243,9 @@ const CONF_META = {
 async function load() {
   loading.value = true
   try {
-    const status = tab.value === 'all' ? '' : tab.value
+    // 「已办结」= 聚合终态（closed+rejected）；issued（调解中）有独立 tab。后端 status 支持逗号多值
+    const status = tab.value === 'all' ? ''
+      : tab.value === 'archived' ? 'closed,rejected' : tab.value
     const data = await fetchCases({ status, pageSize: 20 })
     cases.value = data.items
   } catch (e) {
@@ -218,12 +259,23 @@ async function loadCounts() {
   try {
     const data = await fetchCases({ pageSize: 100 })
     const all = data.items
-    const next = { all: all.length, draft: 0, awaiting_confirmation: 0, pending_review: 0, documents_ready: 0, closed: 0 }
+    const next = { all: all.length, draft: 0, awaiting_confirmation: 0, pending_review: 0,
+                   documents_ready: 0, auto_passed: 0, closed: 0, issued: 0, rejected: 0,
+                   reject_suggested: 0 }
     for (const c of all) {
       if (next[c.status] !== undefined) next[c.status]++
     }
-    counts.value = next
-    emit('counts', { ...next })
+    next.archived = next.closed + next.rejected
+    // 徽章口径：文书待办 = 待签发 + 意见稿（与文书签发页列表一致）
+    next.doc_pending = next.documents_ready + next.reject_suggested
+    // 徽章口径：复核 = 待裁决任务数（拉取失败时用案件状态近似）
+    try {
+      next.review_pending = (await fetchReviewCount()).pending
+    } catch {
+      next.review_pending = next.pending_review + next.reject_suggested
+    }
+    counts.value = { ...counts.value, ...next }
+    emit('counts', { ...counts.value })
   } catch { /* 徽标计数失败不打扰 */ }
 }
 
@@ -239,12 +291,12 @@ const elReason = reactive({})   // element_id -> {value, reason}（修正态展�
 const submittingEls = ref(false)
 let currentCaseId = ''
 
-function openCase(row) {
+function openCase(row, tab = null) {
   if (!row?.case_id) return
   currentCaseId = row.case_id
   detailVisible.value = true
   emit('open-case', row)
-  loadDetail()
+  loadDetail(tab)
 }
 
 // 新建受理成功后（App 传入 openCaseId）自动打开
@@ -252,9 +304,11 @@ watch(() => props.openCaseId, (id) => {
   if (id) openCase({ case_id: id })
 })
 
-async function loadDetail() {
+async function loadDetail(tab = 'info') {
   detailLoading.value = true
-  dtab.value = 'info'
+  // tab || 'info'：openCase 的默认参数是 null，而 JS 默认参数只在 undefined 时生效——
+  // 直传 null 会让 el-tabs 没有任何 pane 匹配（全部 display:none，信息页空白）
+  dtab.value = tab || 'info'
   verification.value = null
   Object.keys(elOps).forEach(k => delete elOps[k])
   Object.keys(elReason).forEach(k => delete elReason[k])
@@ -265,7 +319,8 @@ async function loadDetail() {
       detailVisible.value = false
       return
     }
-    detail.value = { case: data.case, notes: data.notes || [], history: data.history || [] }
+    detail.value = { case: data.case, notes: data.notes || [], history: data.history || [],
+                     reviewFollowup: data.review_followup || null }
     // 有过程的案件：并行载入要素与核验报告
     if (data.elements_count > 0) {
       const elData = await fetchElements(currentCaseId)
@@ -284,8 +339,45 @@ async function loadDetail() {
 }
 
 async function reloadDetail() {
-  if (currentCaseId) await loadDetail()
+  if (currentCaseId) await loadDetail(dtab.value)   // 保持当前 tab（不跳回信息）
 }
+
+// 文书生成/签发后：刷新案件详情（状态/时间线）、列表行与计数
+function onDocsChanged() {
+  loadDetail(dtab.value)
+  load()
+  loadCounts()
+}
+
+// 「去复核」：切换到复核工作台并聚焦该案（App 负责切视图与转发 focusCase）
+function goReview(row) {
+  emit('go-review', row)
+}
+
+// 下一步指引：按当前状态给出"该做什么"（含复核任务是否待裁决的区分）
+const nextStepText = computed(() => {
+  const c = detail.value?.case
+  if (!c) return ''
+  const map = {
+    draft: '草稿：请到「要素确认」页签核对要素并提交',
+    extracting: '要素抽取中，请稍候…',
+    awaiting_confirmation: '请到「要素确认」页签核对/修正要素后提交，系统将自动核验分流',
+    auto_passed: '核验通过：请到「文书」页签生成四产出物',
+    documents_ready: '待签发：请到「文书」页签核对溯源并签发受理登记表',
+    issued: '已受理：请到「调解」页签录入调解结果，签发协议书后结案',
+    closed: '案件已结案',
+    rejected: '不予受理通知书已签发，案件已终结',
+  }
+  if (c.status === 'pending_review') {
+    return '已进入复核队列：等待复核员在「复核工作台」裁决；可在此补充要素材料'
+  }
+  if (c.status === 'reject_suggested') {
+    return c.review_pending
+      ? '命中硬性规则：等待复核员在「复核工作台」确认驳回'
+      : '复核已确认不予受理：请到「文书」页签生成并签发《不予受理通知书》'
+  }
+  return map[c.status] || ''
+})
 
 // ---------- 要素确认交互 ----------
 function elMark(el) {
@@ -375,6 +467,13 @@ onMounted(() => {
   margin: 16px 0 8px; font-weight: 600; font-size: 14px; color: #1f3350;
 }
 .timeline { padding-left: 6px; }
+.next-step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; margin-bottom: 12px; border-radius: 8px;
+  background: #eff6ff; border-left: 3px solid #2b5fad;
+  font-size: 13px; color: #2b5fad; line-height: 1.7;
+}
+.next-step .ns-icon { font-weight: 700; }
 .tl-note { color: #909399; font-size: 12.5px; }
 .narrative-text {
   white-space: pre-wrap; word-break: break-word;
@@ -383,6 +482,12 @@ onMounted(() => {
 }
 /* 要素确认 */
 .el-ops-tip { font-size: 12.5px; color: #909399; margin-bottom: 10px; }
+.rv-followup {
+  padding: 10px 14px; margin-bottom: 10px; border-radius: 8px;
+  background: #fdf6ec; border-left: 3px solid #e6a23c;
+  font-size: 13px; color: #7a5a1a; line-height: 1.8;
+}
+.rv-followup ul { margin: 4px 0 0 18px; padding: 0; }
 .el-list { display: flex; flex-direction: column; gap: 10px; }
 .el-card { padding: 12px 14px; border: 1px solid #eef1f6; border-radius: 10px; background: #fff; }
 .el-card.marked { border-color: #f3d19e; background: #fffdf6; }

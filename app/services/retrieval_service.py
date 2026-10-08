@@ -17,7 +17,7 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
     cases_col = vector_service.get_collection(vector_service.CASES_COLLECTION)
 
     laws = []
-    if laws_col.count():
+    if top_laws and laws_col.count():   # top_laws=0：只要案例/只要法条的调用方跳过对应分支
         r = laws_col.query(query_embeddings=[qv], n_results=top_laws)
         for doc, meta, dist in zip(r["documents"][0], r["metadatas"][0], r["distances"][0]):
             if dist > MAX_DISTANCE:
@@ -27,7 +27,7 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
                          "text": doc, "distance": round(dist, 3)})
 
     cases, seen = [], set()
-    if cases_col.count():
+    if top_cases and cases_col.count():
         # 多取一倍再按案例去重：同一案例多个子块命中只留最近的一条
         r = cases_col.query(query_embeddings=[qv], n_results=top_cases * 2,
                             where={"chunk_type": "child"})

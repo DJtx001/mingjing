@@ -44,3 +44,14 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403,
                             detail={"code": "AUTHZ_002", "message": "你没有权限，请联系管理员 3112028466@qq.com"})
     return user
+
+
+def require_reviewer(user: dict = Depends(get_current_user)) -> dict:
+    """复核员专用依赖：reviewer 或 admin（管理员兜底全权限）。
+
+    用法：接口参数写 user: dict = Depends(require_reviewer)（复核工作台 E 组）。
+    """
+    if user.get("role") not in ("reviewer", "admin"):
+        raise HTTPException(status_code=403,
+                            detail={"code": "AUTHZ_002", "message": "你没有复核权限，请联系管理员 3112028466@qq.com"})
+    return user

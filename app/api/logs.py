@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键（查询按 id DESC，天然时序且高效）',
   user_id     VARCHAR(32)  NOT NULL COMMENT '操作者用户ID（user.user_id）',
   username    VARCHAR(64)  NOT NULL COMMENT '操作者账号（冗余快照，用户改名/删除后日志仍可读）',
-  action      VARCHAR(32)  NOT NULL COMMENT '操作类型：login / kb_upload / kb_delete / rule_update / schema_save / prompt_save / kb_reindex / log_delete / log_clear',
+  action      VARCHAR(32)  NOT NULL COMMENT '操作类型：login / kb_upload / kb_delete / rule_update / schema_save / prompt_save / kb_reindex / doc_generate / doc_issue / review_decision / mediation_record / log_delete / log_clear',
   target      VARCHAR(255) DEFAULT NULL COMMENT '操作对象：文件名 / 规则ID / 纠纷类型 / 提示词key（登录为 NULL）',
   detail      JSON         DEFAULT NULL COMMENT '附加信息 JSON，如 {"enabled": false}、{"schema_version": 3}',
   ip          VARCHAR(45)  DEFAULT NULL COMMENT '来源 IP（45 长度兼容 IPv6）',
@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 # 允许的 action 取值（查询过滤白名单，防拼 SQL 注入）
 ACTIONS = ("login", "kb_upload", "kb_delete", "rule_update",
-           "schema_save", "prompt_save", "kb_reindex", "log_delete", "log_clear")
+           "schema_save", "prompt_save", "kb_reindex",
+           "doc_generate", "doc_issue", "review_decision", "mediation_record",
+           "log_delete", "log_clear")
 
 
 def init_tables():

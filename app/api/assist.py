@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS assist_adoption (
   ref_id VARCHAR(24) DEFAULT NULL COMMENT '引用对象ID（law_{id}/case_{id}；reasoning 为空）',
   content VARCHAR(1000) NOT NULL COMMENT '采纳内容快照（截断存）',
   target ENUM('similar_case_doc','case_note') NOT NULL COMMENT '采纳目标',
-  target_doc_id VARCHAR(24) DEFAULT NULL COMMENT '目标载体ID（当前为 case_note.id；文书模块后为 doc_xxx）',
+  target_doc_id VARCHAR(24) DEFAULT NULL COMMENT '目标载体ID（case_note.id；类案参考文书生成后回写为 doc_xxx）',
   operator_id VARCHAR(16) NOT NULL COMMENT '操作人 user_id',
   created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
   KEY idx_case (case_id, created_at),
@@ -197,9 +197,25 @@ def _case_block(case: dict) -> str:
             lines.append(f"- [{_NOTE_TAG_CN.get(n['tag'], n['tag'])}] {src}{(n['content'] or '')[:80]}")
     return "\n".join(lines)
 
-# 检索无命中时的固定回复：不调 LLM（杜绝编造与自由发挥），一句话给出可行动指引
-NO_HIT_REPLY = ("知识库暂无相关依据。如需我基于法条或类案回答，"
-                "请在「知识库」页导入对应法律文件并完成灌库后重新提问。")
+# 检索无命中时的固定回复：不调 LLM（杜绝编造与自由发挥）。
+# 文案面向"无命中的任意短问"（法律盲区 / 闲聊）：先给能力范围，再引导补库，
+# 不再对所有问题直怼"去导入法律文件"
+NO_HIT_REPLY = ("这个问题我暂时无法回答（知识库中没有找到相关依据）。"
+                "我擅长的是：法律问题（法条 / 类案，带出处）、案件进展、要素补充询问清单。"
+                "若这是法律问题且属于知识库盲区，可在「知识库」页补充对应文件完成灌库后重新提问。")
+
+# 问候/寒暄/能力询问：这类短句在向量空间里必然无命中，回"知识库暂无依据"很机械。
+# 直接给一段引导文案（零 token），把用户引到能答的问题上
+_GREETING = re.compile(
+    r"^(你好呀?|您好啊?|哈喽|哈啰|嗨+|hi|hello|hey|早上好|中午好|下午好|晚上好|"
+    r"在吗|在不在|你是谁|你会什么|你能做什么)[!！。.~～？?、\s]*$", re.I)
+
+GREETING_REPLY = (
+    "你好，我是明镜 AI 助手 👋 可以直接这样问我：\n"
+    "- 法律问题：如「催讨的诉讼时效从什么时候起算」（基于知识库法条 / 类案回答，并标注出处）\n"
+    "- 案件进展：在案件里点「AI 办案」，问我「这个案子什么情况」\n"
+    "- 材料准备：让我生成要素补充询问清单"
+)
 
 # 问"现在几点/今天几号"类短问：后端直接答（LLM 不知道真实时间，这类问题也不该花 token），
 # 模式收紧防误伤法律问题（如"上诉时间""诉讼时效时间"不匹配）
@@ -207,8 +223,11 @@ _TIME_QUERY = re.compile(r"几点了?|几号了?|几月几号|星期几|周几|�
 
 
 def _fallback_reply(message: str) -> str:
-    """无命中兜底：时间类问题直接答，其余固定文案。"""
-    if len(message.strip()) <= 25 and _TIME_QUERY.search(message):
+    """无命中兜底：问候给引导、时间类直接答，其余固定文案。"""
+    m = message.strip()
+    if len(m) <= 25 and _GREETING.match(m):
+        return GREETING_REPLY
+    if len(m) <= 25 and _TIME_QUERY.search(message):
         now = datetime.now()
         weekday = "一二三四五六日"[now.weekday()]
         return f"现在是 {now.strftime('%Y年%m月%d日 %H:%M')}（星期{weekday}）。"
@@ -355,8 +374,8 @@ async def adopt(body: AdoptRequest, user: dict = Depends(get_current_user)):
     """H2 采纳回流：引用卡片一键落库并写入案件备注。
 
     闭环：AI 回答 → 采纳 → assist_adoption 记录（统计源） + case_note 备注
-    （案件详情可见）。类案参考的文书形态（target=similar_case_doc）待文书模块开工，
-    当前两个 target 统一落备注容器，tag 区分来源类型。
+    （案件详情可见）。target=similar_case_doc 的采纳还会在案件「类案参考」文书
+    生成时合并进正文（生成后 target_doc_id 回写为 doc_id；备注落点始终保留）。
     """
     from app.core.db import MySQLClient
     db = MySQLClient()

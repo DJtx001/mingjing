@@ -80,6 +80,10 @@ const ACTION_META = {
   schema_save: { label: '保存 Schema', type: 'warning' },
   prompt_save: { label: '保存提示词', type: 'warning' },
   kb_reindex:  { label: '灌库',   type: 'info' },
+  doc_generate: { label: '生成文书', type: 'warning' },
+  doc_issue:   { label: '签发文书', type: 'success' },
+  review_decision: { label: '复核裁决', type: 'warning' },
+  mediation_record: { label: '录入调解结果', type: 'success' },
   log_delete:  { label: '删除日志',   type: 'danger' },
   log_clear:   { label: '清空日志',   type: 'danger' },
 }

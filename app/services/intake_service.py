@@ -7,6 +7,7 @@
 （"改配置不发版"设计）。
 """
 import json
+import logging
 import re
 import uuid
 
@@ -14,6 +15,8 @@ import pymysql
 
 from app.core.config import config
 from app.llm.provider import provider
+
+logger = logging.getLogger(__name__)
 
 # ---------- 内置默认配置（知识库未配置时的兜底） ----------
 
@@ -307,6 +310,17 @@ def run_verification(case_id: str, by_user_id: str | None = None) -> dict:
         status_map = {"auto_pass": "auto_passed", "pending_review": "pending_review",
                       "reject_suggestion": "reject_suggested"}
         set_status(case_id, status_map[level], by_user_id, f"核验完成：{level}")
+
+        # 复核队列钩子（人工介入②前置）：非自动通过的分流自动入队
+        # （pending_review→normal；reject_suggestion→high）。延迟 import 防模块循环；
+        # 入队失败不阻塞核验返回（启动兜底会补齐）
+        if level in ("pending_review", "reject_suggestion"):
+            from app.services import review_service
+            try:
+                review_service.enqueue(case_id, status_map[level], conclusion)
+            except Exception as e:
+                logger.warning("复核入队失败 case_id=%s: %s", case_id, e)
+
         return {"level": level, "conclusion": conclusion,
                 "findings": findings, "missing_core": missing_core}
     finally:

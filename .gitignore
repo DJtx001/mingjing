@@ -22,3 +22,7 @@ erro/
 
 # 向量库（派生数据，可由 reindex 重建）
 Chromadb/
+
+# 容器部署数据卷（本地演练/云端运行时生成）与迁移产物
+data/
+dist-export/
