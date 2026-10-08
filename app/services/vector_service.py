@@ -10,7 +10,9 @@ from app.core.config import config
 LAWS_COLLECTION = "laws_v1"
 CASES_COLLECTION = "case_refs_v1"
 
-_client: PersistentClient | None = None
+# 用注释式注解：PersistentClient 是工厂函数而非类，`X | None` 在 3.12 立即求值会 TypeError
+# （本机 3.14 有 PEP 649 延迟求值所以不报，容器 3.12 会炸）
+_client = None  # type: PersistentClient | None
 
 
 def get_client() -> PersistentClient:

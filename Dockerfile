@@ -4,7 +4,9 @@ FROM python:3.12-slim
 
 # TZ 需 tzdata 支持（datetime.now() 显示北京时间；后端写入的时间/审计均依赖）
 ENV PYTHONUNBUFFERED=1 TZ=Asia/Shanghai
-RUN apt-get update \
+# Debian 官方源在国内很慢（apt-get update 要数分钟）→ 换阿里云镜像（仅构建期，不影响运行时）
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/*
 

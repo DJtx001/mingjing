@@ -193,8 +193,13 @@ def extract_elements(case_id: str, by_user_id: str | None = None) -> list[dict]:
     extracted = _parse_elements_json(raw)
     if not extracted:
         # 一次重试：LLM 输出格式偶发漂移，重试通常即恢复（仍失败则按"全部未抽取"落库）
+        logger.warning("要素抽取解析失败，重试一次 raw=%r", raw[:200])
         raw = provider.chat([{"role": "user", "content": prompt}], temperature=0.1)
         extracted = _parse_elements_json(raw)
+        if not extracted:
+            # 静默降级会把要素全落空且不留信号（线上无法排查）→ 至少记下原始输出
+            logger.error("要素抽取两次解析均失败，按“全部未抽取”落库 case_id=%s raw=%r",
+                         case_id, raw[:300])
     by_name = {e["name"]: e for e in extracted}
 
     conn = _conn()
