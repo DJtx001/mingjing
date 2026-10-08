@@ -444,8 +444,10 @@ def _sse_stream(session_id: str, body: ChatRequest):
         yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
         return
 
-    # ---- Function Calling：RAG 无命中时让 LLM 尝试 DB 工具 ----
+    # ---- Function Calling：RAG 无命中或 DB 模式匹配时让 LLM 尝试 DB 工具 ----
     if not context:
+        handled, fc_messages = _try_function_calling(messages, body.message)
+    elif _DB_QUERY_PATTERN.search(body.message):
         handled, fc_messages = _try_function_calling(messages, body.message)
         if handled:
             t0 = time.time()
