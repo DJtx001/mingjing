@@ -58,8 +58,11 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
                            "article": meta["article"], "chapter": meta["chapter"],
                            "text": doc, "distance": round(dist, 3)})
 
-    # BM25 多取一倍给 RRF 做候选池
-    b_laws = bm25.search_laws(query, top_laws * 2)
+    # BM25 只在向量路证明「查询与知识库语义相关」后参与召回。
+    # 无关短问（"现在是什么时间""你会什么"）向量 0 命中，但 BM25 词面命中
+    # 会硬凑满 top_k 垃圾引用（实测无关查询 BM25-only 分数 6~19，正例 19~43）。
+    # ponytail: 纯词面匹配的查询（人名、案号）若向量 0 命中会全弃，FC 工具兜底。
+    b_laws = bm25.search_laws(query, top_laws * 2) if v_laws else []
     laws = _rrf_fuse(v_laws, b_laws, top_laws)
 
     # ———— 案例 ————
@@ -78,7 +81,7 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
             if len(v_cases) >= top_cases * 2:
                 break
 
-    b_cases = bm25.search_cases(query, top_cases * 2)
+    b_cases = bm25.search_cases(query, top_cases * 2) if v_cases else []
     cases = _rrf_fuse(v_cases, b_cases, top_cases)
 
     return {"laws": laws, "cases": cases}
