@@ -2,6 +2,7 @@
 
 首次查询时从 MySQL 全量加载建索引。写入新数据后重启 app 即可重载。
 """
+import threading
 import jieba
 import pymysql
 from rank_bm25 import BM25Okapi
@@ -15,13 +16,19 @@ class BM25Service:
         self._cases_bm25: BM25Okapi | None = None
         self._law_data: list[dict] = []
         self._case_data: list[dict] = []
+        self._ready_event = threading.Event()
+        # 后台线程启动异步加载
+        threading.Thread(target=self._load, daemon=True).start()
 
     def _tokenize(self, text: str) -> list[str]:
         return list(jieba.cut(text))
 
-    def ensure_loaded(self):
-        if self._laws_bm25 is not None:
-            return
+    @property
+    def ready(self) -> bool:
+        return self._ready_event.is_set()
+
+    def _load(self):
+        """在后台线程中全量加载建索引。"""
         conn = pymysql.connect(**config.MYSQL)
         try:
             with conn.cursor() as cur:
@@ -47,7 +54,7 @@ class BM25Service:
             tok.append(self._tokenize(head + d["text"]))
         self._laws_bm25 = BM25Okapi(tok)
 
-        # 案例：全文（标题+四段）一条一块，hit_text 复用事实段
+        # 案例：全文（标题+四段）一条一块
         self._case_data = []
         tok = []
         for row in cases:
@@ -58,8 +65,16 @@ class BM25Service:
             tok.append(self._tokenize("\n".join(parts)))
         self._cases_bm25 = BM25Okapi(tok)
 
+        self._ready_event.set()
+
+    def ensure_loaded(self):
+        """等待 BM25 索引加载完成（首次调用会阻塞）。"""
+        self._ready_event.wait()
+
     def search_laws(self, query: str, top_k: int = 10) -> list[dict]:
         """返回 [{ref_id, source, article, chapter, text, bm25_score}, …]"""
+        if not self._ready_event.is_set():
+            return []  # 未就绪：降级为空结果，交由纯向量召回
         self.ensure_loaded()
         tokens = self._tokenize(query)
         scores = self._laws_bm25.get_scores(tokens)
@@ -80,7 +95,8 @@ class BM25Service:
 
     def search_cases(self, query: str, top_k: int = 10) -> list[dict]:
         """返回 [{ref_id, title, summary, hit_text, bm25_score}, …]"""
-        self.ensure_loaded()
+        if not self._ready_event.is_set():
+            return []
         tokens = self._tokenize(query)
         scores = self._cases_bm25.get_scores(tokens)
         ranked = sorted(enumerate(scores), key=lambda x: -x[1])
@@ -116,6 +132,6 @@ def get_bm25_service() -> BM25Service:
 
 
 def reload_bm25():
-    """写入新数据后调用以重载索引（或直接重启 app，重启就是 reload）。"""
+    """写入新数据后调用以重载索引（后台异步加载）。"""
     global _SERVICE
     _SERVICE = BM25Service()
