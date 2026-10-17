@@ -37,6 +37,9 @@
               {{ loading ? '登录中…' : '登 录' }}
             </el-button>
           </el-form-item>
+          <el-form-item class="quick-form-item">
+            <el-button class="quick-btn" @click="quickLogin">🎬 一键登录（测试账号 lisi）</el-button>
+          </el-form-item>
         </el-form>
 
         <div class="demo-tip">演示账号：lisi 密码：123456（普通用户，对知识库的权限仅查看与上传）如有问题联系管理员3112028466@qq.com</div>
@@ -53,6 +56,13 @@ const emit = defineEmits(['login-success'])
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+
+/** 面试演示入口：免填表单，自动填入测试账号 lisi 走正常登录 */
+function quickLogin() {
+  form.username = 'lisi'
+  form.password = '123456'
+  handleLogin()
+}
 
 async function handleLogin() {
   if (!form.username.trim() || !form.password) {
@@ -176,6 +186,20 @@ async function handleLogin() {
 .login-btn:hover {
   box-shadow: 0 9px 26px rgba(43, 95, 173, 0.5);
   transform: translateY(-1px);
+}
+.quick-form-item { margin-bottom: 10px; }
+.quick-btn {
+  width: 100%;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #4a80d4;
+  background: #f7fafd;
+  border: 1px dashed #9eb8e0;
+}
+.quick-btn:hover {
+  color: #2b5fad;
+  background: #eef4fc;
+  border-color: #4a80d4;
 }
 .demo-tip {
   margin-top: 8px;
