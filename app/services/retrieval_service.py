@@ -1,6 +1,7 @@
 """知识库检索：AI 助手对话的 RAG 召回层。
 
 混合召回 = 向量语义 + BM25 全文，RRF 融合排序。
+意图门控：案例侧无实质命中且法条侧距离超阈 → 判非领域查询，整体拒绝（不产出引用）。
 """
 from app.llm.embedding import embed_texts
 from app.services import vector_service
@@ -10,6 +11,15 @@ MAX_DISTANCE = 0.42   # cosine 距离阈值：实测真相关 ≤0.39、无关 �
                       # 收到 0.42（留 0.03 边际）——0.42~0.45 的"勉强命中"多为弱相关，
                       # 塞给 LLM 会产出"材料不适用却硬引用"的回答，宁缺毋滥。
 RRF_K = 60            # RRF 融合常数
+
+# ———— 意图门控（2026-10 新增）————
+# 半专业沾边查询（"股票怎么买""该不该辞职"）不在知识库可回答范围内，
+# 但向量/BM25 都有弱命中。200 条人工标注集标定：案例侧无实质命中
+# + 法条侧最近距离 >0.35 → 整体拒绝。实测拦截 50/62 负例、误拒 1/138
+# 正例（"善意取得"与"辞职"特征完全重合：law_min 同为 0.355，调阈值无解）。
+# 仅当法条/案例两侧通道都启用时判定——单侧检索的调用方（文书生成等）不适用。
+INTENT_CASE_PASS_MAX = 1   # 案例侧 ≤MAX_DISTANCE 的条数 ≤ 此值 = 无实质命中
+INTENT_LAW_MIN = 0.35      # 法条侧最近距离阈值（含阈值外候选，非 v_laws）
 
 
 def _rrf_fuse(v_items: list[dict], b_items: list[dict], top_k: int):
@@ -41,16 +51,20 @@ def _rrf_fuse(v_items: list[dict], b_items: list[dict], top_k: int):
 
 
 def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
-    """混合召回：向量语义 + BM25 全文检索，RRF 融合。"""
+    """混合召回：向量语义 + BM25 全文检索，RRF 融合。
+
+    返回 {"laws", "cases", "intent_rejected"}；被意图门控拒绝时两列表为空。
+    """
     qv = embed_texts([query])[0]
     bm25 = get_bm25_service()
     laws_col = vector_service.get_collection(vector_service.LAWS_COLLECTION)
     cases_col = vector_service.get_collection(vector_service.CASES_COLLECTION)
 
-    # ———— 法条 ————
-    v_laws = []
+    # ———— 法条：向量候选（law_min 记录含阈值外的最近距离，意图门控用） ————
+    v_laws, law_min = [], None
     if top_laws and laws_col.count():
         r = laws_col.query(query_embeddings=[qv], n_results=top_laws * 2)
+        law_min = min(r["distances"][0])
         for doc, meta, dist in zip(r["documents"][0], r["metadatas"][0], r["distances"][0]):
             if dist > MAX_DISTANCE:
                 continue
@@ -58,18 +72,12 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
                            "article": meta["article"], "chapter": meta["chapter"],
                            "text": doc, "distance": round(dist, 3)})
 
-    # BM25 只在向量路证明「查询与知识库语义相关」后参与召回。
-    # 无关短问（"现在是什么时间""你会什么"）向量 0 命中，但 BM25 词面命中
-    # 会硬凑满 top_k 垃圾引用（实测无关查询 BM25-only 分数 6~19，正例 19~43）。
-    # ponytail: 纯词面匹配的查询（人名、案号）若向量 0 命中会全弃，FC 工具兜底。
-    b_laws = bm25.search_laws(query, top_laws * 2) if v_laws else []
-    laws = _rrf_fuse(v_laws, b_laws, top_laws)
-
-    # ———— 案例 ————
-    v_cases, seen = [], set()
+    # ———— 案例：向量候选（case_pass 按阈值内命中数原始计数，去重前） ————
+    v_cases, seen, case_pass = [], set(), None
     if top_cases and cases_col.count():
         r = cases_col.query(query_embeddings=[qv], n_results=top_cases * 3,
                             where={"chunk_type": "child"})
+        case_pass = sum(1 for d in r["distances"][0] if d <= MAX_DISTANCE)
         for doc, meta, dist in zip(r["documents"][0], r["metadatas"][0], r["distances"][0]):
             if dist > MAX_DISTANCE or meta["case_ref_id"] in seen:
                 continue
@@ -81,10 +89,22 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
             if len(v_cases) >= top_cases * 2:
                 break
 
+    # ———— 意图门控：两侧通道都有证据才判定，判非领域则整体拒绝 ————
+    if (law_min is not None and case_pass is not None
+            and case_pass <= INTENT_CASE_PASS_MAX and law_min > INTENT_LAW_MIN):
+        return {"laws": [], "cases": [], "intent_rejected": True}
+
+    # BM25 只在向量路证明「查询与知识库语义相关」后参与召回。
+    # 无关短问（"现在是什么时间""你会什么"）向量 0 命中，但 BM25 词面命中
+    # 会硬凑满 top_k 垃圾引用（实测无关查询 BM25-only 分数 6~19，正例 19~43）。
+    # ponytail: 纯词面匹配的查询（人名、案号）若向量 0 命中会全弃，FC 工具兜底。
+    b_laws = bm25.search_laws(query, top_laws * 2) if v_laws else []
+    laws = _rrf_fuse(v_laws, b_laws, top_laws)
+
     b_cases = bm25.search_cases(query, top_cases * 2) if v_cases else []
     cases = _rrf_fuse(v_cases, b_cases, top_cases)
 
-    return {"laws": laws, "cases": cases}
+    return {"laws": laws, "cases": cases, "intent_rejected": False}
 
 
 def build_context(result: dict) -> tuple[str, list]:
