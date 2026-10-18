@@ -142,7 +142,10 @@ def _exec_db_tool(name: str, args: dict) -> str:
 
 
 def _try_function_calling(messages: list, user_message: str) -> tuple[bool, list]:
-    """当 RAG 无命中时，尝试让 LLM 用 DB 工具回答。返回 (是否已处理, 新消息列表)。"""
+    """RAG 无命中或问句命中 _DB_QUERY_PATTERN 时，尝试让 LLM 用 DB 工具回答。
+
+    返回 (是否已处理, 新消息列表)；正则不过 / LLM 不调工具 / provider 抛异常均返回 False。
+    """
     if not _DB_QUERY_PATTERN.search(user_message):
         return False, messages
 
@@ -445,9 +448,9 @@ def _sse_stream(session_id: str, body: ChatRequest):
         return
 
     # ---- Function Calling：RAG 无命中或 DB 模式匹配时让 LLM 尝试 DB 工具 ----
-    if not context:
-        handled, fc_messages = _try_function_calling(messages, body.message)
-    elif _DB_QUERY_PATTERN.search(body.message):
+    # 注意分支归属：handled 后处理块必须挂在本 if 内（曾因缩进事故滑进 elif，
+    # 导致 not context 场景 FC 结果被丢弃、有材料时回答被兜底文案吞掉）
+    if not context or _DB_QUERY_PATTERN.search(body.message):
         handled, fc_messages = _try_function_calling(messages, body.message)
         if handled:
             t0 = time.time()
@@ -471,18 +474,19 @@ def _sse_stream(session_id: str, body: ChatRequest):
             yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
             return
 
-        # 无命中兜底（含问候/时间/固定文案）
-        reply = _fallback_reply(body.message)
-        is_no_evidence = 1 if reply == NO_HIT_REPLY else 0
-        if is_no_evidence and case:
-            reply = _case_block(case) + "\n\n" + reply
-        session_service.append_message(
-            session_id, "assistant", reply, reply_id=reply_id, citations=[],
-            context={"no_evidence": is_no_evidence})
-        yield f"event:delta\ndata: {json.dumps({'delta': reply}, ensure_ascii=False)}\n\n"
-        yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
-        yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
-        return
+        if not context:
+            # 无命中兜底（含问候/时间/固定文案）
+            reply = _fallback_reply(body.message)
+            is_no_evidence = 1 if reply == NO_HIT_REPLY else 0
+            if is_no_evidence and case:
+                reply = _case_block(case) + "\n\n" + reply
+            session_service.append_message(
+                session_id, "assistant", reply, reply_id=reply_id, citations=[],
+                context={"no_evidence": is_no_evidence})
+            yield f"event:delta\ndata: {json.dumps({'delta': reply}, ensure_ascii=False)}\n\n"
+            yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
+            yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
+            return
 
     t0 = time.time()
     full_text = []
