@@ -25,7 +25,10 @@ async def lifespan(app: FastAPI):
     预热内容：
     - Redis 连接池建第一条连接
     - LLM 客户端（ChatOpenAI + httpx 连接池）初始化
-    这样用户的第一次对话请求就不会因为冷启动而变慢。
+    - 检索链路（2026-10-18 补）：retrieve() 前台走一遍把检索侧三个惰性单例全热透
+      （embedding 建连 + Chroma 双 collection 索引加载 ~3.5s；BM25 照旧后台异步建索引）。
+      此前漏了它们，后端启动后第一条对话要多等 ~4.5s
+      （实测 Chroma 首载 ~2.5s + embedding 建连 ~0.8s + LLM 首 chunk ~1.2s）
     """
     try:
         from app.core.redis import get_redis
@@ -53,6 +56,19 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_warmup_call, daemon=True).start()
     except Exception as e:
         logger.warning("warmup: LLM 预热初始化失败: %s", e)
+
+    # 检索链路预热（2026-10-18 补）：此前只预热 Redis/LLM，漏了检索侧三个惰性单例——
+    # 后端启动后第一条对话要多等 ~4.5s（实测：Chroma 首载 ~2.5s + embedding 建连 ~0.8s）。
+    # retrieve() 一次即全链热透（内部按序触发：embedding 建连 → Chroma 双 collection
+    # 索引加载 → BM25 单例（后台异步建索引 ~55s，不等）），且调用形态与真实首问一致
+    # （含 cases 的 where 过滤 / parent get）——曾手动 query 预热漏热一环，实测首条仍慢 1.4s。
+    # 前台执行（启动 +~3.5s）：换「启动完成 = 检索链就绪」；失败降级首次对话时再建。
+    try:
+        from app.services import retrieval_service
+        retrieval_service.retrieve("预热")
+        logger.info("warmup: 检索链已预热（embedding 建连 + Chroma 双索引 + BM25 已触发）")
+    except Exception as e:
+        logger.warning("warmup: 检索链预热失败（不影响启动，首次对话时再建）: %s", e)
 
     yield
 
