@@ -804,36 +804,37 @@ function formatTime(t) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* AI 回答 Markdown 渲染（v-html 结构，white-space 交还给块级元素） */
+/* AI 回答 Markdown 渲染（v-html 结构，white-space 交还给块级元素）
+   ⚠ v-html 注入的节点不带 scoped 属性，后代选择器必须 :deep() 包裹才生效 */
 .md-body { white-space: normal; }
-.md-body p { margin: 5px 0; }
-.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+:deep(.md-body) p { margin: 5px 0; }
+:deep(.md-body) h1, :deep(.md-body) h2, :deep(.md-body) h3, :deep(.md-body) h4 {
   margin: 12px 0 6px; font-size: 14px; font-weight: 700; color: #1f3350;
 }
-.md-body h1 { font-size: 15px; }
-.md-body h1:first-child, .md-body h2:first-child, .md-body h3:first-child { margin-top: 2px; }
-.md-body ul, .md-body ol { margin: 4px 0; padding-left: 20px; }
-.md-body li { margin: 3px 0; }
-.md-body li > p { margin: 0; }
-.md-body strong { color: #1f3350; }
-.md-body code {
+:deep(.md-body) h1 { font-size: 15px; }
+:deep(.md-body) h1:first-child, :deep(.md-body) h2:first-child, :deep(.md-body) h3:first-child { margin-top: 2px; }
+:deep(.md-body) ul, :deep(.md-body) ol { margin: 4px 0; padding-left: 20px; }
+:deep(.md-body) li { margin: 3px 0; }
+:deep(.md-body) li > p { margin: 0; }
+:deep(.md-body) strong { color: #1f3350; }
+:deep(.md-body) code {
   background: #eef2f8; border-radius: 4px; padding: 1px 5px;
   font-family: Consolas, "Courier New", monospace; font-size: 12px;
 }
-.md-body pre {
+:deep(.md-body) pre {
   background: #f6f8fc; border: 1px solid #e9eef6; border-radius: 8px;
   padding: 10px 12px; overflow-x: auto;
 }
-.md-body pre code { background: none; padding: 0; }
-.md-body blockquote {
+:deep(.md-body) pre code { background: none; padding: 0; }
+:deep(.md-body) blockquote {
   margin: 6px 0; padding: 2px 12px;
   border-left: 3px solid #c9d8ef; color: #55627a;
 }
-.md-body table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
-.md-body th, .md-body td { border: 1px solid #e2e8f2; padding: 4px 10px; }
-.md-body th { background: #f4f7fc; }
-.md-body a { color: #2b5fad; }
-.md-body hr { border: none; border-top: 1px dashed #dde5f0; margin: 10px 0; }
+:deep(.md-body) table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+:deep(.md-body) th, :deep(.md-body) td { border: 1px solid #e2e8f2; padding: 4px 10px; }
+:deep(.md-body) th { background: #f4f7fc; }
+:deep(.md-body) a { color: #2b5fad; }
+:deep(.md-body) hr { border: none; border-top: 1px dashed #dde5f0; margin: 10px 0; }
 
 /* ===== 引用卡片 ===== */
 .cite-card {
