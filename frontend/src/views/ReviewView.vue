@@ -71,8 +71,9 @@
 
           <div class="sec-title">类案参考（辅助裁决）</div>
           <div v-if="detail.similar_cases.length" class="sim-list">
-            <div v-for="c in detail.similar_cases" :key="c.ref_id" class="sim-item">
-              <div class="sim-title">{{ c.title }}<span class="sim-dist">相似度 {{ (1 - c.distance).toFixed(2) }}</span></div>
+            <div v-for="c in detail.similar_cases" :key="c.ref_id" class="sim-item"
+                 title="点击查看完整案例四段" @click="viewCase(c)">
+              <div class="sim-title">{{ c.title }}<span class="sim-dist">{{ c.distance != null ? '相似度 ' + (1 - c.distance).toFixed(2) : '词面命中' }}</span><span class="sim-open">查看全文 ↗</span></div>
               <div class="sim-text">{{ c.summary }}</div>
             </div>
           </div>
@@ -120,12 +121,22 @@
         <el-empty :image-size="80" description="从左侧队列选择案件，查看底情与核验对照后裁决" />
       </div>
     </div>
+
+    <!-- 类案全文弹窗：点击类案卡片 → GET /assist/citation?ref_id=case_{id}（复用 AI 助手「查看原文」接口） -->
+    <el-dialog v-model="citeVisible" :title="citeData.title" width="680px" top="6vh" append-to-body>
+      <div v-loading="citeLoading" class="cite-full">
+        <div v-if="citeData.meta" class="cite-full-meta">{{ citeData.meta }}</div>
+        <div class="md-body" v-html="renderMd(citeData.content)"></div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import MarkdownIt from 'markdown-it'
 import { fetchReviewQueue, fetchReviewDetail, decideReview } from '../api/reviews.js'
+import { fetchCitation } from '../api/assist.js'
 import { getUser } from '../api/http.js'
 
 const emit = defineEmits(['queue-count'])
@@ -231,6 +242,31 @@ function fmt(t) {
   return t ? String(t).slice(5, 16).replace('T', ' ') : ''
 }
 
+// ---------- 类案全文弹窗（点击类案卡片 → 引用原文接口，与 AI 助手「查看原文」同款） ----------
+const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
+function renderMd(text) { return md.render(text || '') }
+
+const citeVisible = ref(false), citeLoading = ref(false)
+const citeData = ref({ title: '', meta: '', content: '' })
+
+async function viewCase(c) {
+  citeVisible.value = true
+  citeLoading.value = true
+  citeData.value = { title: c.title || '', meta: '', content: '' }
+  try {
+    const d = await fetchCitation(c.ref_id)
+    citeData.value = {
+      title: d.title,
+      meta: (d.type === 'law' ? '法条' : '案例') + (d.meta ? ' · ' + d.meta : ''),
+      content: d.content,
+    }
+  } catch (e) {
+    citeData.value = { ...citeData.value, content: '加载失败：' + e.message }
+  } finally {
+    citeLoading.value = false
+  }
+}
+
 onMounted(() => {
   if (canReview) loadQueue()
 })
@@ -281,10 +317,20 @@ onMounted(() => {
 .vr-finding.warn { border-left-color: #e6a23c; }
 .vr-basis { margin-top: 3px; font-size: 12px; color: #8492a6; }
 .sim-list { display: flex; flex-direction: column; gap: 8px; }
-.sim-item { padding: 9px 12px; border: 1px solid #eef1f6; border-radius: 8px; background: #fcfdff; }
+.sim-item { padding: 9px 12px; border: 1px solid #eef1f6; border-radius: 8px; background: #fcfdff; cursor: pointer; transition: border-color .15s, background .15s; }
+.sim-item:hover { border-color: #c6d8f2; background: #f6faff; }
 .sim-title { font-size: 13px; font-weight: 600; color: #1f3350; }
 .sim-dist { margin-left: 8px; font-size: 11.5px; color: #67c23a; font-weight: 400; }
+.sim-open { margin-left: 8px; font-size: 11.5px; color: #2b5fad; font-weight: 400; }
 .sim-text { margin-top: 4px; font-size: 12px; color: #5a6b84; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* 类案全文弹窗（v-html 内容不带 scoped 属性，后代选择器需 :deep） */
+.cite-full { min-height: 120px; font-size: 13px; color: #303133; line-height: 1.85; }
+.cite-full-meta { font-size: 12px; color: #8492a6; margin-bottom: 8px; }
+:deep(.md-body) h2 { margin: 12px 0 6px; font-size: 14px; font-weight: 700; color: #1f3350; }
+:deep(.md-body) h2:first-child { margin-top: 0; }
+:deep(.md-body) p { margin: 6px 0; }
+:deep(.md-body) strong { color: #1f3350; }
 .empty-line { font-size: 12.5px; color: #a6adb8; }
 .dec-item { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; font-size: 12.5px; }
 .dec-reason { flex: 1; color: #3a4a60; }
