@@ -83,8 +83,12 @@ DB_TOOLS = [
 ]
 
 
-def _exec_db_tool(name: str, args: dict) -> str:
-    """执行 DB 工具，返回格式化的文本结果。"""
+def _exec_db_tool(name: str, args: dict) -> tuple[str, list]:
+    """执行 DB 工具，返回 (格式化文本结果, 引用卡片列表)。
+
+    引用卡片与 RAG citations 同结构（citation_type/ref_id/title/snippet），
+    FC 回答也能点开原文——工具查到的记录即引用。
+    """
     import pymysql
     from app.core.config import config
     conn = pymysql.connect(**config.MYSQL)
@@ -96,8 +100,10 @@ def _exec_db_tool(name: str, args: dict) -> str:
                             (f"%{kw}%",))
                 rows = cur.fetchall()
                 if not rows:
-                    return f"未找到标题含「{kw}」的案例。"
-                return "\n".join(f"  ID={r[0]} {r[1]}" for r in rows)
+                    return f"未找到标题含「{kw}」的案例。", []
+                return ("\n".join(f"  ID={r[0]} {r[1]}" for r in rows),
+                        [{"citation_type": "similar_case", "ref_id": f"case_{r[0]}",
+                          "title": r[1], "snippet": ""} for r in rows])
 
             if name == "get_case_detail":
                 cid = int(args["case_id"])
@@ -107,14 +113,16 @@ def _exec_db_tool(name: str, args: dict) -> str:
                 )
                 r = cur.fetchone()
                 if not r:
-                    return f"未找到 ID={cid} 的案例。"
-                return (
+                    return f"未找到 ID={cid} 的案例。", []
+                text = (
                     f"【案例 {r[1]}】\n"
                     f"事实：{(r[2] or '无')[:500]}\n\n"
                     f"过程：{(r[3] or '无')[:300]}\n\n"
                     f"结果：{(r[4] or '无')[:300]}\n\n"
                     f"评析：{(r[5] or '无')[:300]}"
                 )
+                return text, [{"citation_type": "similar_case", "ref_id": f"case_{r[0]}",
+                               "title": r[1], "snippet": (r[4] or "")[:120]}]
 
             if name == "search_laws":
                 kw = args.get("keyword", "")
@@ -125,49 +133,57 @@ def _exec_db_tool(name: str, args: dict) -> str:
                 )
                 rows = cur.fetchall()
                 if not rows:
-                    return f"未找到含「{kw}」的法条。"
-                return "\n\n".join(
+                    return f"未找到含「{kw}」的法条。", []
+                return ("\n\n".join(
                     f"《{r[1]}》第{r[2]}条\n{r[3][:300]}" for r in rows
-                )
+                ), [{"citation_type": "law", "ref_id": f"law_{r[0]}",
+                     "title": f"《{r[1]}》 {r[2]}".strip(), "snippet": r[3][:120]}
+                    for r in rows])
 
             if name == "get_kb_stats":
                 cur.execute("SELECT COUNT(*) FROM law")
                 laws = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM case_ref")
                 cases = cur.fetchone()[0]
-                return f"知识库现有法条 {laws} 条、案例 {cases} 条。"
+                return f"知识库现有法条 {laws} 条、案例 {cases} 条。", []
     finally:
         conn.close()
-    return f"未知工具：{name}"
+    return f"未知工具：{name}", []
 
 
-def _try_function_calling(messages: list, user_message: str) -> tuple[bool, list]:
+def _try_function_calling(messages: list, user_message: str) -> tuple[bool, list, list]:
     """RAG 无命中或问句命中 _DB_QUERY_PATTERN 时，尝试让 LLM 用 DB 工具回答。
 
-    返回 (是否已处理, 新消息列表)；正则不过 / LLM 不调工具 / provider 抛异常均返回 False。
+    返回 (是否已处理, 新消息列表, 引用卡片列表)；
+    正则不过 / LLM 不调工具 / provider 抛异常均返回 False。
     """
     if not _DB_QUERY_PATTERN.search(user_message):
-        return False, messages
+        return False, messages, []
 
     from copy import deepcopy
     msgs = deepcopy(messages)
-    msgs.append({"role": "user", "content": user_message})
+    # 调用现场已把本次提问追加进 messages：无材料场景末尾即裸问题本体，
+    # 完全重复的二次 append 会触发个别 provider 报错，跳过；
+    # 有材料场景末尾是「材料+【用户问题】」包裹消息（内容不同），保留追加
+    last = msgs[-1] if msgs else {}
+    if not (last.get("role") == "user" and last.get("content") == user_message):
+        msgs.append({"role": "user", "content": user_message})
     try:
         resp = provider.chat(msgs, tools=DB_TOOLS)
     except Exception:
-        return False, messages  # provider 失败不回退
+        return False, messages, []  # provider 失败不回退
 
     tool_calls = getattr(resp, "tool_calls", None)
     if not tool_calls:
-        return False, messages  # LLM 选择不用工具
+        return False, messages, []  # LLM 选择不用工具
 
     tc = tool_calls[0]
-    result = _exec_db_tool(tc["name"], tc["args"])
+    result, refs = _exec_db_tool(tc["name"], tc["args"])
     msgs.append({
         "role": "system",
         "content": f"以下是数据库查询结果，请据此回答用户问题：\n{result}",
     })
-    return True, msgs
+    return True, msgs, refs
 
 # ---------- 表结构（幂等创建） ----------
 # assist_session / assist_message 为早期手工建表，此处补录基线 DDL 使新环境可自动建齐
@@ -451,7 +467,7 @@ def _sse_stream(session_id: str, body: ChatRequest):
     # 注意分支归属：handled 后处理块必须挂在本 if 内（曾因缩进事故滑进 elif，
     # 导致 not context 场景 FC 结果被丢弃、有材料时回答被兜底文案吞掉）
     if not context or _DB_QUERY_PATTERN.search(body.message):
-        handled, fc_messages = _try_function_calling(messages, body.message)
+        handled, fc_messages, fc_refs = _try_function_calling(messages, body.message)
         if handled:
             t0 = time.time()
             full_text = []
@@ -464,10 +480,11 @@ def _sse_stream(session_id: str, body: ChatRequest):
                 return
             latency_ms = int((time.time() - t0) * 1000)
             text = "".join(full_text)
-            yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
+            # FC 回答带上工具命中的引用卡片（与 RAG citations 同结构，可点开原文）
+            yield "event:citations\ndata: " + json.dumps({"citations": fc_refs}, ensure_ascii=False) + "\n\n"
             session_service.append_message(
                 session_id, "assistant", text,
-                reply_id=reply_id, citations=[],
+                reply_id=reply_id, citations=fc_refs,
                 context={"model": provider_model(), "provider": "cloud",
                          "latency_ms": latency_ms, "no_evidence": 0},
             )
