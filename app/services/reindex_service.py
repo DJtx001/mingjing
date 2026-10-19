@@ -131,6 +131,7 @@ def _run_cases() -> None:
                 if not rows:
                     break
                 ids, docs, metas = [], [], []
+                row_of = []   # 块下标 → 行 id（子块失败要回溯到所属行标状态）
                 for r in rows:
                     pid = f"case_{r['id']}_p"
                     summary = [f"【案例】{r['title']}"]
@@ -142,6 +143,7 @@ def _run_cases() -> None:
                     ids.append(pid)
                     docs.append("\n".join(summary))
                     metas.append({"chunk_type": "parent", "case_ref_id": r["id"], "title": r["title"]})
+                    row_of.append(r["id"])
                     for sec in _SECTIONS:
                         body = r[sec]
                         if not body:
@@ -150,15 +152,25 @@ def _run_cases() -> None:
                         docs.append(f"【{r['title']}·{_SECTION_NAMES[sec]}】{body}")
                         metas.append({"chunk_type": "child", "parent_id": pid,
                                       "case_ref_id": r["id"], "title": r["title"], "section": sec})
+                        row_of.append(r["id"])
                 vectors, bad = _embed_batch(docs)
                 ok = [i for i, v in enumerate(vectors) if v is not None]
+                # 块下标 → 行 id：一行任一子块失败即整行标 2（案例不完整、不再重试），
+                # 否则重跑会永远卡在同一毒块上（与 _run_laws 同语义）
+                bad_rows = {row_of[i] for i in bad}
+                ok_rows = {row_of[i] for i in ok} - bad_rows
                 if ok:
                     col = vector_service.get_collection(vector_service.CASES_COLLECTION)
                     col.upsert(ids=[ids[i] for i in ok], documents=[docs[i] for i in ok],
                                embeddings=[vectors[i] for i in ok], metadatas=[metas[i] for i in ok])
-                    with conn.cursor() as cur2:
+                with conn.cursor() as cur2:
+                    if ok_rows:
                         cur2.executemany("UPDATE case_ref SET vector_synced=1 WHERE id=%s",
-                                         [(r["id"],) for r in rows])
+                                         [(i,) for i in ok_rows])
+                    if bad_rows:  # 2=无法向量化，跳过不再重试（防每次重跑卡同一处）
+                        cur2.executemany("UPDATE case_ref SET vector_synced=2 WHERE id=%s",
+                                         [(i,) for i in bad_rows])
+                        state["skipped"] += len(bad_rows)
                 conn.commit()
                 state["processed"] += len(rows)
     finally:
