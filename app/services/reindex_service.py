@@ -118,8 +118,22 @@ def _run_laws() -> None:
         conn.close()
 
 
+def _case_parent_text(r: dict) -> str:
+    """案例父块摘要（约 350 字）：标题 + 案情[:120] + 结果/评析[:200]。
+
+    与 scripts/_refresh_parent_cases.py 共用同一拼装逻辑（改这里即可全量刷新）。
+    """
+    summary = [f"【案例】{r['title']}"]
+    if r["fact"]:
+        summary.append("案情：" + r["fact"][:120])
+    tail, tag = (r["result"], "结果") if r["result"] else (r["comment"], "评析")
+    if tail:
+        summary.append(f"{tag}：" + tail[:200])
+    return "\n".join(summary)
+
+
 def _run_cases() -> None:
-    """案例：1 父块（程序拼接摘要，~200 字）+ 非空段子块，parent_id 关联。"""
+    """案例：1 父块（程序拼接摘要，~350 字）+ 非空段子块，parent_id 关联。"""
     conn = _conn()
     try:
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
@@ -134,14 +148,8 @@ def _run_cases() -> None:
                 row_of = []   # 块下标 → 行 id（子块失败要回溯到所属行标状态）
                 for r in rows:
                     pid = f"case_{r['id']}_p"
-                    summary = [f"【案例】{r['title']}"]
-                    if r["fact"]:
-                        summary.append("案情：" + r["fact"][:120])
-                    tail, tag = (r["result"], "结果") if r["result"] else (r["comment"], "评析")
-                    if tail:
-                        summary.append(f"{tag}：" + tail[:100])
                     ids.append(pid)
-                    docs.append("\n".join(summary))
+                    docs.append(_case_parent_text(r))
                     metas.append({"chunk_type": "parent", "case_ref_id": r["id"], "title": r["title"]})
                     row_of.append(r["id"])
                     for sec in _SECTIONS:
