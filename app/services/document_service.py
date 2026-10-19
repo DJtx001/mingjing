@@ -331,9 +331,12 @@ def gen_similar_cases(ctx: dict) -> list[dict]:
     frags.append(_frag(f"## 一、知识库检索命中（{len(cases)} 例）"))
     if cases:
         for i, c in enumerate(cases):
-            sim = round(1 - c["distance"], 2)   # cosine 距离 → 相似度（阈值 0.42 → ≥0.58 才命中）
+            # cosine 距离 → 相似度（阈值 0.42 → ≥0.58 才命中）；
+            # BM25-only 命中的案例无向量距离（distance=None），显示「词面命中」
+            dist = c.get("distance")
+            tag = f"（相似度 {1 - dist:.2f}）" if dist is not None else "（词面命中）"
             mark = "（已采纳）" if c["ref_id"] in adopted_ids else ""
-            frags.append(_frag(f"### {i + 1}. {_clean(c['title'])}{mark}（相似度 {sim:.2f}）",
+            frags.append(_frag(f"### {i + 1}. {_clean(c['title'])}{mark}{tag}",
                                refs=[{"annotation_type": "similar_case", "ref_type": "case",
                                       "ref_id": c["ref_id"]}], sep="\n", head=4))
             # 父块摘要首行是"【案例】标题"（灌库时拼装），标题已在上行展示，去掉避免重复
