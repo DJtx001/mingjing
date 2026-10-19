@@ -635,11 +635,13 @@ async def list_sessions(case_id: Optional[str] = None, user: dict = Depends(get_
         sessions = [s for s in sessions if s.get("case_id") == case_id]
     items = []
     for s in sessions:
-        # 标题取首条用户消息的首行前 30 字（而非最后一条），一眼认得出是哪次对话；
+        # 标题取最早一条「用户」消息的首行前 30 字（而非 msgs[0]）——会话消息列表里
+        # 也有 assistant 回答，直接取首条会把 AI 答案当成标题（长会话更明显，2026-10-19 修）；
         # 单会话取标题失败（Redis/MySQL 抖动）不拖垮整个列表
         try:
             msgs = session_service.get_messages(s["session_id"])
-            first = msgs[0]["content"].strip().splitlines() if msgs else []
+            u = next((m for m in msgs if m.get("role") == "user"), None)
+            first = (u["content"] or "").strip().splitlines() if u else []
             title = first[0][:30] if first else ""
         except Exception:
             title = ""

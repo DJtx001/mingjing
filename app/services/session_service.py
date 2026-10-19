@@ -319,9 +319,13 @@ def get_messages(session_id: str) -> list[dict]:
     if messages:
         try:
             r = get_redis()
-            # MySQL 返回的是旧→新，RPUSH 保持顺序（最新在尾部）
+            # List 约定「头=最新」（与 append_message 的逐条 LPUSH 一致）。
+            # MySQL 返回旧→新，正序逐条 LPUSH，最后压入的最新的自然落在头部。
+            # 原实现用 RPUSH（头=最旧），读取端却按「头=最新」反转，
+            # 导致 Redis 丢失后回填的会话顺序颠倒（前端先显示答案再显示问题），
+            # 且 LTRIM 保留的是「最旧 10 条」而不是「最新 10 条」（2026-10-19 修）。
             for m in messages:
-                r.rpush(_msgs_key(session_id), json.dumps(m, ensure_ascii=False))
+                r.lpush(_msgs_key(session_id), json.dumps(m, ensure_ascii=False))
             r.ltrim(_msgs_key(session_id), 0, _MAX_MESSAGES - 1)
             r.expire(_msgs_key(session_id), _SESSION_TTL)
         except Exception as e:
