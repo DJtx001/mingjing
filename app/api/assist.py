@@ -83,6 +83,18 @@ DB_TOOLS = [
 ]
 
 
+def _used_citations(text: str, citations: list) -> list:
+    """按正文实际标注的 [n] 过滤引用卡片（n 与 citations 下标 1:1，由 build_context 保证）。
+
+    检索命中的材料若正文判定无关——模型会写明「[6] 与本题无关，未予引用」——不该
+    再列进卡片区，否则正文与卡片自相矛盾（2026-10-19 用户报告）。
+    兜底：一个 [n] 都没标、或标注的编号全越界时返回全量（旧行为），避免卡片整体消失。
+    """
+    used = {int(x) for x in re.findall(r"\[(\d+)\]", text)}
+    filtered = [c for i, c in enumerate(citations, 1) if i in used]
+    return filtered or citations
+
+
 def _exec_db_tool(name: str, args: dict) -> tuple[str, list]:
     """执行 DB 工具，返回 (格式化文本结果, 引用卡片列表)。
 
@@ -96,8 +108,12 @@ def _exec_db_tool(name: str, args: dict) -> tuple[str, list]:
         with conn.cursor() as cur:
             if name == "search_cases":
                 kw = args.get("keyword", "")
-                cur.execute("SELECT id, title FROM case_ref WHERE title LIKE %s LIMIT 6",
-                            (f"%{kw}%",))
+                # 模型常生成多词查询（如「民间借贷 利率」），整串 LIKE 会零命中——
+                # 按空格拆词 OR 匹配（LIMIT 仍控召回量；SQL 文本由固定模板拼，无注入面）
+                terms = kw.split() or [kw]
+                wh = " OR ".join(["title LIKE %s"] * len(terms))
+                cur.execute(f"SELECT id, title FROM case_ref WHERE {wh} LIMIT 6",
+                            tuple(f"%{t}%" for t in terms))
                 rows = cur.fetchall()
                 if not rows:
                     return f"未找到标题含「{kw}」的案例。", []
@@ -126,11 +142,11 @@ def _exec_db_tool(name: str, args: dict) -> tuple[str, list]:
 
             if name == "search_laws":
                 kw = args.get("keyword", "")
-                cur.execute(
-                    "SELECT id, source, article, text FROM law "
-                    "WHERE source LIKE %s OR text LIKE %s LIMIT 5",
-                    (f"%{kw}%", f"%{kw}%"),
-                )
+                # 同 search_cases：多词查询逐词 OR，整串匹配会零命中
+                terms = kw.split() or [kw]
+                wh = " OR ".join(["source LIKE %s OR text LIKE %s"] * len(terms))
+                params = tuple(p for t in terms for p in (f"%{t}%", f"%{t}%"))
+                cur.execute(f"SELECT id, source, article, text FROM law WHERE {wh} LIMIT 5", params)
                 rows = cur.fetchall()
                 if not rows:
                     return f"未找到含「{kw}」的法条。", []
@@ -517,6 +533,10 @@ def _sse_stream(session_id: str, body: ChatRequest):
         return
     latency_ms = int((time.time() - t0) * 1000)
     text = "".join(full_text)
+
+    # 只推送正文实际标注（[n]）的材料——正文声明「与本题无关」的材料不该再列成卡片
+    # （详见 _used_citations）。注：FC 分支的 fc_refs 不过滤（模型主动查询的工具命中记录）
+    citations = _used_citations(text, citations)
 
     # 检索命中时推送 citations 事件（法条/类案引用卡片，供采纳回流）
     yield "event:citations\ndata: " + json.dumps({"citations": citations}, ensure_ascii=False) + "\n\n"
