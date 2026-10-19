@@ -343,7 +343,7 @@ def gen_similar_cases(ctx: dict) -> list[dict]:
             summary = c["summary"] or ""
             if summary.startswith("【案例】") and "\n" in summary:
                 summary = summary.split("\n", 1)[1]
-            frags.append(_frag(_clean(summary)[:200] or "（无摘要）", sep="\n"))
+            frags.append(_frag(_clean(summary)[:400] or "（无摘要）", sep="\n"))
             frags.append(_frag(f"相关段落：{_clean(c['hit_text'])[:200]}"))
     elif err:
         frags.append(_frag(f"> 检索服务暂不可用（{err}），稍后重新生成可恢复。"))
