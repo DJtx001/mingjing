@@ -431,15 +431,14 @@ def _purge_structured(file_key: str) -> dict:
         conn.commit()
     finally:
         conn.close()
-    # Chroma 块 ID 由 MySQL 主键推导，与 reindex_service 保持一致
+    # Chroma 块按 metadata 过滤删除（对齐 MySQL 主键）；原实现按主键公式拼 id 删，
+    # 历史 id 与公式不符的块删不掉会留幽灵块（检索命中但 /citation 404，2026-10-19 清过 20 个）
     if law_ids:
         vector_service.get_collection(vector_service.LAWS_COLLECTION).delete(
-            ids=[f"law_{i}" for i in law_ids])
+            where={"law_id": {"$in": law_ids}})
     if case_ids:
-        ids = []
-        for i in case_ids:
-            ids += [f"case_{i}_p"] + [f"case_{i}_{s}" for s in ("fact", "process", "result", "comment")]
-        vector_service.get_collection(vector_service.CASES_COLLECTION).delete(ids=ids)
+        vector_service.get_collection(vector_service.CASES_COLLECTION).delete(
+            where={"case_ref_id": {"$in": case_ids}})
     return {"laws": len(law_ids), "cases": len(case_ids)}
 
 
