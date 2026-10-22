@@ -126,8 +126,12 @@
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
               <div class="msg-main">
-                <div class="bubble" :class="{ streaming: m.streaming, 'md-body': m.role === 'assistant' }"
-                     v-html="m.role === 'assistant' ? renderMd(m.content) : escapeText(m.content)"></div>
+                <div class="bubble" :class="{ streaming: m.streaming, 'md-body': m.role === 'assistant' }">
+                  <!-- 首字到达前显示后端状态（「正在检索相关法条与案例…」/「正在思考…」），
+                       别让用户对着空气泡干等 3 秒 -->
+                  <span v-if="m.role === 'assistant' && m.streaming && !m.content" class="thinking">{{ m.status || '正在思考…' }}</span>
+                  <span v-else v-html="m.role === 'assistant' ? renderMd(m.content) : escapeText(m.content)"></span>
+                </div>
                 <div v-for="(c, j) in m.citations" :key="j" class="cite-card" :class="c.citation_type">
                   <div class="cite-head">
                     <span class="cite-badge">{{ c.citation_type === 'law' ? '法条' : '案例' }}</span>
@@ -357,7 +361,7 @@ async function send() {
   input.value = ''
   messages.value.push({ role: 'user', content: text })
   // reactive 包装:必须经代理改属性才能触发渲染,否则流式 delta 不会实时上屏
-  const aiMsg = reactive({ role: 'assistant', content: '', streaming: true, citations: [], reply_id: null })
+  const aiMsg = reactive({ role: 'assistant', content: '', streaming: true, citations: [], reply_id: null, status: '' })
   messages.value.push(aiMsg)
   sending.value = true
   scrollToBottom()
@@ -367,7 +371,10 @@ async function send() {
       if (event === 'start') {
         sessionId.value = data.session_id
         if (isNewSession) loadSessions()
+      } else if (event === 'status') {
+        aiMsg.status = data.text
       } else if (event === 'delta') {
+        if (!aiMsg.content) aiMsg.status = ''   // 首字到达，状态文案让位给正文
         aiMsg.content += data.delta
         scrollToBottom()
       } else if (event === 'citations') {
@@ -796,6 +803,7 @@ function formatTime(t) {
   animation: blink 1s infinite;
   color: #2b5fad;
 }
+.thinking { color: #8a94a6; font-size: 13px; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* 案件上下文条（头部）：超长省略，× 清除退回通用问答 */

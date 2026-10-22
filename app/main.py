@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
@@ -16,6 +18,34 @@ import logging
 from app.api import cases, assist, auth, intake, kb, logs, stats, documents, reviews, mediation
 
 logger = logging.getLogger("warmup")
+
+# 闲置保活间隔：外部 API 的空闲连接会被对端回收，用户隔久了第一次提问要重新
+# 做 DNS+TCP+TLS 握手（~0.3-0.5s）。每 5 分钟轻量 ping 一次，首发始终复用热连接。
+_KEEPALIVE_INTERVAL = 300
+
+
+def _keepalive_ping() -> None:
+    """保活一次：LLM + embedding 各发一个最小请求。
+
+    直接调裸客户端而不走 provider.chat/stream：后者失败会触发 60s 云端冷却，
+    保活失败不该连累用户请求（下次真实请求自然会重建连接）。
+    """
+    try:
+        from app.llm.provider import provider
+        provider._init_cloud().invoke([{"role": "user", "content": "hi"}])
+    except Exception as e:
+        logger.debug("keepalive: LLM ping 失败（下次请求时自然重建）: %s", e)
+    try:
+        from app.llm.embedding import embed_texts
+        embed_texts(["保活"])
+    except Exception as e:
+        logger.debug("keepalive: embedding ping 失败: %s", e)
+
+
+def _keepalive_loop() -> None:
+    while True:
+        time.sleep(_KEEPALIVE_INTERVAL)
+        _keepalive_ping()
 
 
 @asynccontextmanager
@@ -54,6 +84,8 @@ async def lifespan(app: FastAPI):
                 logger.warning("warmup: LLM 预热失败（不影响使用，首次对话时再建连）: %s", e)
 
         threading.Thread(target=_warmup_call, daemon=True).start()
+        # 启动后每 5 分钟保活一次，避免用户隔久了来首发多付一次握手
+        threading.Thread(target=_keepalive_loop, daemon=True).start()
     except Exception as e:
         logger.warning("warmup: LLM 预热初始化失败: %s", e)
 
@@ -93,6 +125,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 静态资源 gzip：主 JS 1.36MB → 468KB（实测），首屏省 ~0.25s。
+# Starlette 1.7 默认排除 text/event-stream，SSE 流式不会被压缩/缓冲。
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 class CacheControlMiddleware:

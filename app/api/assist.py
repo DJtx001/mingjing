@@ -404,8 +404,12 @@ GREETING_REPLY = (
 _TIME_QUERY = re.compile(r"几点了?|几号了?|几月几号|星期几|周几|是什么时间|什么日期|现在时间|当前时间")
 
 
-def _fallback_reply(message: str) -> str:
-    """无命中兜底：问候给引导、时间类直接答，其余固定文案。"""
+def _trivial_reply(message: str) -> Optional[str]:
+    """问候/时间类短句的确定性回答；不是这类问题返回 None。
+
+    单独抽出供 _sse_stream 提前短路：这类问题原流程要白跑一遍向量检索（1-2s）
+    再走一次 FC 的 LLM 判断（1-2s）才落到兜底，且期间还会显示「检索中」。
+    """
     m = message.strip()
     if len(m) <= 25 and _GREETING.match(m):
         return GREETING_REPLY
@@ -413,7 +417,12 @@ def _fallback_reply(message: str) -> str:
         now = datetime.now()
         weekday = "一二三四五六日"[now.weekday()]
         return f"现在是 {now.strftime('%Y年%m月%d日 %H:%M')}（星期{weekday}）。"
-    return NO_HIT_REPLY
+    return None
+
+
+def _fallback_reply(message: str) -> str:
+    """无命中兜底：问候给引导、时间类直接答，其余固定文案。"""
+    return _trivial_reply(message) or NO_HIT_REPLY
 
 
 class ChatRequest(BaseModel):
@@ -439,6 +448,9 @@ def _sse_stream(session_id: str, body: ChatRequest):
     用同步生成器 + StreamingResponse，FastAPI/uvicorn 会自动把它放进线程池迭代，
     不阻塞事件循环。每个 LLM token 到达就立刻 yield 一个 delta 事件，前端实时渲染。
     """
+    # 首帧立刻发出：session_id 已知，不必等后面的检索（1-2s）——前端收到即有反馈
+    yield f"event:start\ndata: {json.dumps({'session_id': session_id}, ensure_ascii=False)}\n\n"
+
     # 从 Redis 取近 10 轮消息（旧→新顺序），拼进 prompt
     history = session_service.get_messages(session_id)
     # 案件感知：携带 case_id 时把案件信息（含备注）注入上下文，AI 才能"看到"本案
@@ -451,26 +463,14 @@ def _sse_stream(session_id: str, body: ChatRequest):
     for m in history:
         messages.append({"role": m["role"], "content": m["content"]})
 
-    # RAG：检索知识库（法条+类案），命中则把参考材料绑定在本次提问前
-    if case_query:
-        context, citations = "", []
-    else:
-        context, citations = retrieval_service.build_context(retrieval_service.retrieve(body.message))
-        if context:
-            messages.append({"role": "user", "content": (
-                f"{context}\n\n【用户问题】{body.message}\n\n请基于上述参考材料回答，末尾用 [编号] 标注引用。")})
-        else:
-            messages.append({"role": "user", "content": body.message})
-
-    # 用户消息写入 Redis（追加到会话）
-    session_service.append_message(session_id, "user", body.message)
-
-    yield f"event:start\ndata: {json.dumps({'session_id': session_id}, ensure_ascii=False)}\n\n"
-
     reply_id = "rep_" + uuid.uuid4().hex[:4]
-    if case_query:
-        # 案件事实类问题：确定性回答案件全貌（含流转记录/核验结论/备注），不调 LLM
-        reply = _case_full_block(case)
+
+    # 案件事实类问题 / 问候寒暄 / 时间类：确定性回答，不检索、不调 LLM
+    # （否则用户发个「你好」也要白等一遍向量检索 + 一次 FC 判断，还会显示「检索中」）
+    trivial = None if case_query else _trivial_reply(body.message)
+    if case_query or trivial:
+        reply = _case_full_block(case) if case_query else trivial
+        session_service.append_message(session_id, "user", body.message)
         session_service.append_message(
             session_id, "assistant", reply, reply_id=reply_id, citations=[],
             context={"no_evidence": 0})
@@ -478,6 +478,21 @@ def _sse_stream(session_id: str, body: ChatRequest):
         yield "event:citations\ndata: " + json.dumps({"citations": []}, ensure_ascii=False) + "\n\n"
         yield f"event:done\ndata: {json.dumps({'reply_id': reply_id}, ensure_ascii=False)}\n\n"
         return
+
+    # 状态事件：检索约 1-2s、首 token 约 1-1.5s，前端不能干等——文案跟着实际链路走
+    yield f"event:status\ndata: {json.dumps({'text': '正在检索相关法条与案例…'}, ensure_ascii=False)}\n\n"
+
+    # RAG：检索知识库（法条+类案），命中则把参考材料绑定在本次提问前
+    context, citations = retrieval_service.build_context(retrieval_service.retrieve(body.message))
+    yield f"event:status\ndata: {json.dumps({'text': '正在思考…'}, ensure_ascii=False)}\n\n"
+    if context:
+        messages.append({"role": "user", "content": (
+            f"{context}\n\n【用户问题】{body.message}\n\n请基于上述参考材料回答，末尾用 [编号] 标注引用。")})
+    else:
+        messages.append({"role": "user", "content": body.message})
+
+    # 用户消息写入 Redis（追加到会话）
+    session_service.append_message(session_id, "user", body.message)
 
     # ---- Function Calling：RAG 无命中或 DB 模式匹配时让 LLM 尝试 DB 工具 ----
     # 注意分支归属：handled 后处理块必须挂在本 if 内（曾因缩进事故滑进 elif，
