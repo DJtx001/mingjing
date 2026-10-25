@@ -1,22 +1,61 @@
+<div align="center">
+
 # 明镜 · 要素式智能受理系统
 
-> 🌐 **线上演示地址**：http://39.107.157.0:8000/ （工作日 08:30–21:00 开放）
+**面向人民调解受理工位的全栈 AI 辅助系统**
 
-> 面向人民调解受理工位的全栈 AI 辅助系统，集成 **RAG 检索增强**、**要素式受理引擎**、**双路混合召回**、**三级分流核验** 与 **会话记忆持久化** 能力，为基层调解员提供可溯源、可审计、低延迟的智能受理体验。
+从「当事人陈述」到「调解结案」——一条可溯源、可审计、人机协同的智能受理流水线
 
-## 技术栈
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](#)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](#)
+[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](#)
+[![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)](#)
+[![Redis](https://img.shields.io/badge/Redis-cache-DC382D?logo=redis&logoColor=white)](#)
+[![Chroma](https://img.shields.io/badge/Chroma-vector--db-FF6F00)](#)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](#)
+[![LLM](https://img.shields.io/badge/LLM-DeepSeek-4D6BFE)](#)
 
-| 层级 | 技术 |
+[**🌐 在线演示**](http://39.107.157.0:8000/)　·　[核心功能](#-核心功能)　·　[架构设计](#-架构设计)　·　[快速开始](#-快速开始)
+
+<sub>演示环境开放时间：工作日 08:30 – 21:00</sub>
+
+</div>
+
+---
+
+## 30 秒读懂
+
+| 维度 | 一句话 |
 |---|---|
-| 后端 | Python 3.14 / FastAPI / Uvicorn |
-| 前端 | Vue 3 / Vite / Element Plus |
-| 数据库 | MySQL 8（真相源）+ Redis（热缓存） |
-| 向量库 | Chroma（稠密向量，cosine 相似度，HNSW 索引） |
-| Embedding | 阿里云 DashScope text-embedding-v3（1024 维，批处理 + 退避重试） |
-| 对象存储 | 阿里云 OSS（法条/案例原文、附件、导出文书） |
-| LLM | DeepSeek API（主）/ Ollama 本地模型（兜底降级） |
-| 鉴权 | JWT (HS256) + bcrypt（cost=12）密码哈希 |
-| 检索 | 向量语义召回 + 距离阈值过滤 + 案例父块上溯 |
+| **做什么** | 调解员输入当事人陈述，系统抽取要素、核验分流、起草文书，人工只做确认与裁决 |
+| **核心创新** | 要素式受理引擎：LLM 抽取 + 人工确认双轨 + R1~R7 规则核验 → 三级分流，Schema/Prompt/规则全部配置化 |
+| **凭什么可信** | 三层溯源：要素↔原文 offset、文书↔要素/法条/类案锚点、AI 回答↔引用卡片，全链路可点击回溯 |
+| **工程硬功夫** | RAG 双路召回（阈值过滤 + 父块上溯）、幂等可续跑灌库、Redis/MySQL 双级降级、云端/本地 LLM 降级链 |
+| **人的位置** | 「系统只起草、不拍板」——文书未签发不生效，签发不可逆且全程审计，复核员有权推翻硬规则 |
+
+> 设计信条：**AI 产出的每一句话，都必须能回答「你凭什么这么说」**。
+
+---
+
+## 目录
+
+- [核心功能](#核心功能)
+  - [🤖 RAG 智能问答（检索增强生成）](#-rag-智能问答检索增强生成)
+  - [⚖️ 要素式受理引擎（核心创新）](#-要素式受理引擎核心创新)
+  - [🧐 复核工作台（人工介入②）](#-复核工作台人工介入)
+  - [⚖️ 调解结案（F10 · 结案收尾）](#-调解结案f10--结案收尾)
+  - [📄 文书生成与签发（四产出物）](#-文书生成与签发四产出物)
+  - [📊 统计分析](#-统计分析)
+  - [💬 AI 助手与会话](#-ai-助手与会话)
+  - [📚 知识库管理](#-知识库管理)
+- [架构设计](#架构设计)
+- [技术栈](#技术栈)
+- [目录结构](#目录结构)
+- [快速开始](#快速开始)
+- [安全设计](#安全设计)
+- [特色亮点](#特色亮点)
+
+---
 
 ## 核心功能
 
@@ -66,6 +105,8 @@
 - 法条/案例 `.md` 文件解析入库（按条切分 / 四段式），原文备份 OSS
 - PDF / 文本在线预览，规则 / Schema / 提示词可视化编辑
 - 一键重建向量索引（reindex 后台任务，幂等可续跑，坏条自动隔离）
+
+---
 
 ## 架构设计
 
@@ -141,6 +182,24 @@ R1~R7 规则引擎核验（关键词 + 核心要素缺失检查）
 - 批处理容错：整批失败逐条重试，坏条隔离（`vector_synced=2`）不阻塞其余
 - 中断后从 `vector_synced=0` 处自动续跑，无需任务队列
 
+---
+
+## 技术栈
+
+| 层级 | 技术 |
+|---|---|
+| 后端 | Python 3.14 / FastAPI / Uvicorn |
+| 前端 | Vue 3 / Vite / Element Plus |
+| 数据库 | MySQL 8（真相源）+ Redis（热缓存） |
+| 向量库 | Chroma（稠密向量，cosine 相似度，HNSW 索引） |
+| Embedding | 阿里云 DashScope text-embedding-v3（1024 维，批处理 + 退避重试） |
+| 对象存储 | 阿里云 OSS（法条/案例原文、附件、导出文书） |
+| LLM | DeepSeek API（主）/ Ollama 本地模型（兜底降级） |
+| 鉴权 | JWT (HS256) + bcrypt（cost=12）密码哈希 |
+| 检索 | 向量语义召回 + 距离阈值过滤 + 案例父块上溯 |
+
+---
+
 ## 目录结构
 
 ```
@@ -202,6 +261,8 @@ mingjing-intake/
 └── 说明.md                  # 详细目录说明
 ```
 
+---
+
 ## 快速开始
 
 ### 1. 环境准备
@@ -260,12 +321,16 @@ docker compose up -d --build
 # 向量库从本地迁移（data/chroma 挂载），避免云端重灌（embedding 按量计费）
 ```
 
+---
+
 ## 安全设计
 
 - 密码 bcrypt（cost=12）单向哈希，随机盐
 - JWT 载荷不含密码，默认 24 小时过期
 - 所有会话接口校验归属，防止越权访问
 - .env 不入库，敏感配置与代码分离
+
+---
 
 ## 特色亮点
 
@@ -281,3 +346,13 @@ docker compose up -d --build
 10. **配置化不发版**：要素 Schema、抽取 Prompt、核验规则全部存库，改配置即时生效
 11. **Docker 一键部署**：单机三容器编排，向量库挂载迁移避免云端重灌
 12. **"系统只起草、不拍板"**：文书未签发不生效，签发不可逆并全程留审计，复核员有权推翻硬规则
+
+---
+
+<div align="center">
+
+**如果这个项目对你有启发，点个 ⭐ 支持一下**
+
+<sub>本项目为全栈工程实践作品 · 演示环境数据均为脱敏测试数据</sub>
+
+</div>
