@@ -5,6 +5,7 @@
 「重建索引」按钮灌入（本脚本顺带清空 Chroma 里主键已失效的孤儿块）。
 跳过 _index.md / README.md / 模板等非内容文件。
 """
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,11 @@ SKIP_NAMES = ("_index.md", "README.md", "法律法规模版.md")
 
 
 def main():
+    if os.environ.get("CONFIRM_PURGE") != "1":
+        print("危险操作：本脚本会清空 law / case_ref 及两个 Chroma Collection。")
+        print("确认后设置 CONFIRM_PURGE=1 再运行。")
+        sys.exit(2)
+
     files = [f for f in list_files("laws/")
              if f["key"].lower().endswith(".md") and Path(f["key"]).name not in SKIP_NAMES]
     print(f"待处理 {len(files)} 个文件", flush=True)

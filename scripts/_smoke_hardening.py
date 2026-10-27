@@ -162,6 +162,48 @@ def test_scripts_no_secrets():
     assert bad == [], bad
 
 
+def test_user_table_collation_matches_assist():
+    """新库建 user 表后，assist_session 的外键必须能建（两表 collation 一致）。"""
+    import pymysql
+    from app.core.config import config
+
+    m = config.MYSQL
+    c = pymysql.connect(**m)
+    c.cursor().execute(
+        "CREATE DATABASE IF NOT EXISTS mingjing_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+    c.commit(); c.close()
+
+    orig = m["database"]
+    m["database"] = "mingjing_test"
+    try:
+        from app.api import assist, auth
+        auth.init_tables()
+        try:
+            assist.init_tables()
+        except Exception as e:
+            raise AssertionError(f"assist 建表失败（collation 不匹配）: {e}")
+        c = pymysql.connect(**m); cur = c.cursor()
+        cur.execute("SHOW TABLES LIKE 'assist_session'")
+        assert cur.fetchone(), "assist_session 未创建"
+        c.close()
+    finally:
+        m["database"] = orig
+        c = pymysql.connect(**config.MYSQL)
+        c.cursor().execute("DROP DATABASE IF EXISTS mingjing_test"); c.commit(); c.close()
+
+
+def test_script_safety_guards():
+    """审查发现的脚本安全门：无悬空变量、清库需显式确认、重写评测集先备份。"""
+    import pathlib
+    d = pathlib.Path(__file__).resolve().parent
+    sess = (d / "_verify_http_session_order.py").read_text(encoding="utf-8")
+    assert "CLEARED" not in sess, "会话顺序脚本仍引用已删除的 CLEARED"
+    oss = (d / "import_oss_kb.py").read_text(encoding="utf-8")
+    assert "CONFIRM_PURGE" in oss, "OSS 补库脚本缺少清库确认门"
+    fix = (d / "_fix_labels.py").read_text(encoding="utf-8")
+    assert ".bak" in fix, "评测集重写脚本缺少备份"
+
+
 TESTS = [
     test_assert_case_writer,
     test_cors_reads_config,
@@ -171,6 +213,8 @@ TESTS = [
     test_no_hardcoded_admin_email,
     test_rules_admin_only,
     test_scripts_no_secrets,
+    test_user_table_collation_matches_assist,
+    test_script_safety_guards,
 ]
 
 

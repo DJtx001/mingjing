@@ -23,17 +23,18 @@ h = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 items = requests.get(f"{BASE}/assist/sessions", headers=h, timeout=30).json()["items"]
 print(f"admin 会话 {len(items)} 个")
+if not items:
+    print("无会话可校验：先登录并发一条消息后重跑")
+    sys.exit(2)
 seen = bad = 0
 for it in items:
     sid = it["session_id"]
     msgs = requests.get(f"{BASE}/assist/sessions/{sid}/messages", headers=h, timeout=30).json()["messages"]
     roles = [m["role"] for m in msgs]
     ok = bool(roles) and roles[0] == "user"
-    tag = ""
     if not ok:
         bad += 1
-    if sid in CLEARED or not ok:
-        seen += 1
-        print(f"  {'✓' if ok else '✗'} {sid}{tag} {roles}  标题={it['title'][:18]!r}")
+    seen += 1
+    print(f"  {'✓' if ok else '✗'} {sid} {roles}  标题={it['title'][:18]!r}")
 print(f"抽查被清理会话 {seen} 个，顺序异常 {bad} 个")
 sys.exit(1 if bad else 0)

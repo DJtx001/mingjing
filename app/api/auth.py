@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS user (
   status ENUM('active','disabled') DEFAULT 'active' COMMENT '账号状态',
   created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
-) DEFAULT CHARSET=utf8mb4 COMMENT='系统用户'
+) COMMENT='系统用户'
 """
 
 # 演示种子账号（仅空表时写入；密码统一 123456，生产必改）

@@ -165,7 +165,7 @@ def main():
             el = cur.fetchone()["element_id"]
     finally:
         conn.close()
-    r = requests.put(f"{BASE}/cases/{C}/elements", headers=h(t_reviewer),
+    r = requests.put(f"{BASE}/cases/{C}/elements", headers=h(t_admin),
                      json={"elements": [{"element_id": el, "action": "confirm"}]})
     check("确认要素触发重核验 200", r.status_code == 200, str(r.status_code))
     d = requests.get(f"{BASE}/reviews?status=pending", headers=h(t_reviewer)).json()

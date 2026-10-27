@@ -90,6 +90,8 @@ data["meta"]["口径"] = "law hit@4、case hit@3、误召回率。gate=BM25 语�
 data["meta"]["规模"] = f"{sum(1 for q in data['queries'] if q['laws'] or q['cases'])} 正例 + " \
                       f"{sum(1 for q in data['queries'] if not q['laws'] and not q['cases'])} 负例 = {len(data['queries'])} 条"
 
+bak = p.with_suffix(p.suffix + ".bak")
+bak.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
 p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", "utf-8")
 print(f"修正 {n_fix} 条标注，迁移 {n_move} 条负例→正例")
 print("规模：", data["meta"]["规模"])
