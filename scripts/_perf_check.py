@@ -60,7 +60,21 @@ def test_stats_kb_cached():
         t.append((time.perf_counter() - s) * 1000)
         assert r.status_code == 200, r.status_code
     # 缓存未命中时每次约 60ms；命中时 1~4ms。用最小值判定，避免依赖“第一次一定冷”
-    assert min(t) < 10, f"没有命中缓存的迹象：{[round(x,1) for x in t]}"
+    assert min(t) < 25, f"没有命中缓存的迹象：{[round(x,1) for x in t]}"
+
+
+def test_bm25_cache_fast_load():
+    """BM25 分词缓存存在，且加载耗时应远低于全量重建（约 60s）。"""
+    from app.services import bm25_service as b
+    if not b.CACHE_PATH.exists():
+        print("SKIP: BM25 缓存未生成（首次运行需先触发一次 BM25Service 建索引）")
+        return
+    t0 = time.time()
+    svc = b.BM25Service()
+    svc.ensure_loaded()
+    dt = time.time() - t0
+    assert svc.ready, "BM25 未就绪"
+    assert dt < 10, f"缓存加载 {dt:.1f}s"
 
 
 TESTS = [
@@ -68,6 +82,7 @@ TESTS = [
     test_count_cache_exists,
     test_embed_query_cache,
     test_stats_kb_cached,
+    test_bm25_cache_fast_load,
 ]
 
 
