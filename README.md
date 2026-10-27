@@ -8,13 +8,13 @@
 
 | 层级 | 技术 |
 |---|---|
-| 后端 | Python 3.14 / FastAPI / Uvicorn |
+| 后端 | Python 3.12+（本机 3.14 实测可用）/ FastAPI / Uvicorn |
 | 前端 | Vue 3 / Vite / Element Plus |
 | 数据库 | MySQL 8（真相源）+ Redis（热缓存） |
 | 向量库 | Chroma（稠密向量，cosine 相似度，HNSW 索引） |
 | Embedding | 阿里云 DashScope text-embedding-v3（1024 维，批处理 + 退避重试） |
 | 对象存储 | 阿里云 OSS（法条/案例原文、附件、导出文书） |
-| LLM | DeepSeek API（主）/ Ollama 本地模型（兜底降级） |
+| LLM | DeepSeek API（主）/ Ollama 本地兜底（降级代码保留，当前默认关闭） |
 | 鉴权 | JWT (HS256) + bcrypt（cost=12）密码哈希 |
 | 检索 | 向量语义召回 + 距离阈值过滤 + 案例父块上溯 |
 
@@ -60,7 +60,7 @@
 - **SSE 真流式输出**：逐 token 渲染，首 token 延迟 < 1s，引用卡片实时挂载
 - **会话记忆持久化**：MySQL（真相源）+ Redis（热缓存）两层存储，Redis 故障自动降级
 - **可拖动 AI 入口**：右下角悬浮胶囊按钮，自由拖动记忆位置
-- **越权防护**：所有会话/案件接口校验归属，操作日志全程审计
+- **越权防护**：案件可读全员、写操作限承办人或管理员；会话接口校验归属，操作日志全程审计
 
 ### 📚 知识库管理
 - 法条/案例 `.md` 文件解析入库（按条切分 / 四段式），原文备份 OSS
@@ -87,11 +87,11 @@
 - **MySQL**：所有会话与消息的永久保存，外键级联删除
 - **降级策略**：Redis 故障时自动切 MySQL，保证服务不中断
 
-### LLM 网关：云端 API → 本地 Ollama 降级链
+### LLM 网关：云端 API（本地 Ollama 兜底已停用）
 
 ```
 请求 → 云端 DeepSeek API（主）
-         └─ 失败 → Ollama 本地模型（兜底）
+         └─ 失败 → 直接报错（Ollama 降级代码保留，默认关闭）
 ```
 
 ### RAG 检索链路：双路召回 + 引用溯源
@@ -177,7 +177,7 @@ mingjing-intake/
 │   │   ├── oss_service.py       # 阿里云 OSS 上传/下载/删除/列表
 │   │   └── audit_service.py     # 操作日志审计记录
 │   ├── llm/
-│   │   ├── provider.py      # LLM 网关（云端→本地降级链）
+│   │   ├── provider.py      # LLM 网关（云端 API）
 │   │   └── embedding.py     # Embedding 封装（批处理 + 退避重试）
 │   └── schemas/             # Pydantic 请求/响应模型
 │
@@ -187,7 +187,8 @@ mingjing-intake/
 │   │   ├── components/
 │   │   │   ├── AiAssistantDrawer.vue  # AI 助手悬浮抽屉（SSE 流式 + 可拖动入口 + 会话列表）
 │   │   │   ├── DocumentPanel.vue      # 文书工作台（列表 + 正文溯源渲染 + 签发/导出）
-│   │   │   └── MediationPanel.vue     # 调解结果录入 / 协议书预览 / 签发结案
+│   │   │   ├── MediationPanel.vue     # 调解结果录入 / 协议书预览 / 签发结案
+│   │   │   └── MedSummary.vue         # 调解摘要展示
 │   │   ├── views/           # 登录 / 案件列表 / 新建案件 / 文书签发 / 复核工作台 / 知识库 / 统计 / 操作日志
 │   │   └── App.vue
 │   └── dist/                # 构建产物，由后端同源托管
@@ -198,8 +199,7 @@ mingjing-intake/
 │   ├── export-data.ps1       # 本地数据导出脚本
 │   └── .env.docker.example   # Docker 环境变量模板
 ├── .env.example             # 环境变量模板
-├── requirements.txt         # Python 依赖
-└── 说明.md                  # 详细目录说明
+└── requirements.txt         # Python 依赖
 ```
 
 ## 快速开始
@@ -232,10 +232,15 @@ cp .env.example .env
 #   EMBEDDING_API_KEY / EMBEDDING_BASE_URL（DashScope openai 兼容）
 #   EMBEDDING_MODEL=text-embedding-v3
 
-# 建库建表（执行 app 对应的 SQL，见说明文档）
+# 可选：演示数据 / 跨域（默认关闭）
+#   DEMO_SEED=1        空库首次访问时播种 8 个演示案件
+#   CORS_ORIGINS=      允许的跨域来源，逗号分隔（默认不开放）
+# 演示账号：admin / 123456（仅种子数据，生产必改）
 
-# 启动
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# 建库：在 MySQL 中创建空库即可；表在后端启动时幂等创建（含 user 表与种子账号）
+
+# 启动（本机 Windows 禁用 --reload：uvicorn 热重载会静默失灵）
+python -m app.main
 ```
 
 ### 3. 前端启动
@@ -264,7 +269,7 @@ docker compose up -d --build
 
 - 密码 bcrypt（cost=12）单向哈希，随机盐
 - JWT 载荷不含密码，默认 24 小时过期
-- 所有会话接口校验归属，防止越权访问
+- 案件可读全员；写操作限承办人或管理员；会话接口校验归属，防止越权访问
 - .env 不入库，敏感配置与代码分离
 
 ## 特色亮点
@@ -277,7 +282,7 @@ docker compose up -d --build
 6. **幂等向量灌库**：坏条自动隔离、中断自动续跑，灌库任务可安全重跑
 7. **真流式输出**：基于 SSE + 生成器，LLM 逐 token 推送，首 token 延迟 < 1s
 8. **两级存储降级**：Redis 挂了自动切 MySQL，会话数据零丢失
-9. **LLM 降级链**：云端 API 故障自动 fallback 到本地 Ollama，保障可用性
+9. **LLM 直连云端**：Ollama 兜底代码保留但默认关闭，故障直接报错便于定位
 10. **配置化不发版**：要素 Schema、抽取 Prompt、核验规则全部存库，改配置即时生效
 11. **Docker 一键部署**：单机三容器编排，向量库挂载迁移避免云端重灌
 12. **"系统只起草、不拍板"**：文书未签发不生效，签发不可逆并全程留审计，复核员有权推翻硬规则
