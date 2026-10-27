@@ -24,6 +24,7 @@ def test_assert_case_writer():
     from app.core.deps import assert_case_writer
 
     c = _one_case()
+    assert c["assignee_user_id"], "测试前置：取到的案件必须有承办人"
     owner = {"user_id": c["assignee_user_id"], "role": "intake_clerk"}
     other = {"user_id": "u_999", "role": "intake_clerk"}
     admin = {"user_id": "u_999", "role": "admin"}
@@ -204,6 +205,23 @@ def test_script_safety_guards():
     assert ".bak" in fix, "评测集重写脚本缺少备份"
 
 
+def test_scripts_no_plaintext_password():
+    """spec ⑬ 验收项：入库脚本中不得有明文口令字面量。"""
+    import pathlib
+    import re
+
+    d = pathlib.Path(__file__).resolve().parent
+    pat = re.compile(r"""(?i)\b(password|passwd|pwd)\s*=\s*["'][^"']+["']""")
+    bad = []
+    for p in list(d.rglob("*.py")) + list(d.rglob("*.json")) + list(d.rglob("*.txt")):
+        if "_scratch" in p.parts or p.name == "_smoke_hardening.py":
+            continue
+        for i, line in enumerate(p.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            if pat.search(line):
+                bad.append(f"{p.name}:{i}")
+    assert bad == [], bad
+
+
 TESTS = [
     test_assert_case_writer,
     test_cors_reads_config,
@@ -215,6 +233,7 @@ TESTS = [
     test_scripts_no_secrets,
     test_user_table_collation_matches_assist,
     test_script_safety_guards,
+    test_scripts_no_plaintext_password,
 ]
 
 
