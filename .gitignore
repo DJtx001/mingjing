@@ -28,6 +28,8 @@ scripts/_shots/
 scripts/_chroma_test/
 scripts/__pycache__/
 scripts/*.npz
+# 评测脚本跑出来的终端输出（非源码）
+scripts/_eval*.txt
 
 # 向量库（派生数据，可由 reindex 重建）
 Chromadb/

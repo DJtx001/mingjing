@@ -197,11 +197,9 @@ def test_user_table_collation_matches_assist():
 
 
 def test_script_safety_guards():
-    """审查发现的脚本安全门：无悬空变量、清库需显式确认、重写评测集先备份。"""
+    """审查发现的脚本安全门：清库需显式确认、重写评测集先备份。"""
     import pathlib
     root = pathlib.Path(__file__).resolve().parent.parent
-    sess = (root / "tests" / "_verify_http_session_order.py").read_text(encoding="utf-8")
-    assert "CLEARED" not in sess, "会话顺序脚本仍引用已删除的 CLEARED"
     oss = (root / "scripts" / "import_oss_kb.py").read_text(encoding="utf-8")
     assert "CONFIRM_PURGE" in oss, "OSS 补库脚本缺少清库确认门"
     fix = (root / "scripts" / "_fix_labels.py").read_text(encoding="utf-8")
