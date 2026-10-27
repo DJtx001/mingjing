@@ -2,10 +2,12 @@
 
 场景（用户 2026-10-19 报告）：检索给 7 条材料，正文只引用 [1][2][3][4][5][7]，
 并写明「[6] 与本题无关，未予引用」，但卡片区仍列出第 6 条（开设赌场罪案例）。
-用法：python scripts/_smoke_citation_filter.py
+用法：python tests/_smoke_citation_filter.py
 """
 import sys
 from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
 
 _root = Path(__file__).resolve().parent
 sys.path.insert(0, str(_root if (_root / "app").is_dir() else _root.parent))

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """调解结果与协议书端到端测试（G 组 · M3 结案）。需后端 8000 与 MySQL 在跑。
 
-用法：PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/test_mediation_e2e.py
+用法：PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe tests/test_mediation_e2e.py
 覆盖：状态门槛 → 校验三码（分期/期限/金额/终结原因）→ 录入（快照+协议书草案）→
 协议书内容 → 重录覆盖（旧草案清理）→ 未达成（终结书）→ 达成签发结案（closed+30日）→
 结案后禁止重录/重签。测试后自动清理（删文书与调解结果、恢复夹具状态与文书基线）。
@@ -10,7 +10,6 @@ import io
 import sys
 from datetime import date, datetime, timedelta
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.path.insert(0, ".")
 
 import pymysql
@@ -212,6 +211,7 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     try:
         main()
     finally:

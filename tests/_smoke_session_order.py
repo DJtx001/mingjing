@@ -5,7 +5,7 @@
 messages.reverse() 会把「旧→新」反转成「新→旧」，前端就变成先显示答案再显示问题；
 且 LTRIM(0,9) 在错误方向下保留的是「最旧 10 条」而不是「最新 10 条」。
 
-用法：python scripts/_smoke_session_order.py（需本地 Redis + MySQL）
+用法：python tests/_smoke_session_order.py（需本地 Redis + MySQL）
 """
 import sys
 from pathlib import Path

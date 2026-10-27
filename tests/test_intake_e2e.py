@@ -1,7 +1,7 @@
 """受理流程端到端测试：新建 → LLM 抽取 → 人工确认 → 核验分流 → 时间线。
 
 真实调用 LLM（DeepSeek）与规则引擎；产物入库后自动清理测试案件。
-用法：python scripts/test_intake_e2e.py（需后端在 8000 运行）
+用法：python tests/test_intake_e2e.py（需后端在 8000 运行）
 """
 import sys
 from pathlib import Path

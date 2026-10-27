@@ -6,7 +6,7 @@
 主键公式拼 id 删，删不到它，正是幽灵块的产生机制；新实现按 metadata 过滤可删净）。
 自清理 MySQL + Chroma，可重跑。
 
-跑法（项目根）：.venv/Scripts/python.exe scripts/_smoke_purge.py
+跑法（项目根）：.venv/Scripts/python.exe tests/_smoke_purge.py
 """
 import sys
 from pathlib import Path

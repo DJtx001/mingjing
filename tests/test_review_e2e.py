@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """复核工作台端到端测试（E 组）。需后端 8000 与 MySQL 在跑。
 
-用法：PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/test_review_e2e.py
+用法：PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe tests/test_review_e2e.py
 覆盖：权限 → 队列（优先级排序/过滤）→ 详情 → 裁决（理由校验/supplement 追问回落/
 pass/reject/重复裁决 409）→ 重核验重新入队。
 测试后自动清理：重置夹具（清 task/decision、恢复状态、按核验结论重新入队）、清时间线。
@@ -10,7 +10,6 @@ import io
 import sys
 from datetime import datetime
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.path.insert(0, ".")
 
 import pymysql
@@ -192,6 +191,7 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     try:
         main()
     finally:

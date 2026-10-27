@@ -5,7 +5,7 @@
 - RAG 路径（DB 正则不命中）：材料回答必带 citations，引用 ref_id 可回查 /assist/citation
 - FC 路径（DB 正则命中，如「多少…法律」）：LLM 调工具接管，引用卡片=工具命中记录（2026-10-19 起）
 - 复核详情（预热后首次耗时）→ 类案 ref_id → citation 四段全文（复核页弹窗数据源）
-跑法：.venv/Scripts/python.exe scripts/_smoke_deploy_check.py
+跑法：.venv/Scripts/python.exe tests/_smoke_deploy_check.py
 """
 import json
 import os

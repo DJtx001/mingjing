@@ -1,7 +1,7 @@
 """用户视角验证：打开历史会话，消息顺序应为 旧→新（首条是 user）。
 
 用于确认「Redis 缓存被清理后，按新逻辑回填」在 HTTP 层呈现正确。
-用法：MJ_BASE=<部署地址> SMOKE_PASSWORD=<密码> python scripts/_verify_http_session_order.py
+用法：MJ_BASE=<部署地址> SMOKE_PASSWORD=<密码> python tests/_verify_http_session_order.py
 """
 import os
 import sys

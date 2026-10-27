@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """文书模块端到端测试（F6 生成 + F7 签发）。需后端 8000 与 MySQL 在跑。
 
-用法：cd mingjing-intake && .venv/Scripts/python.exe scripts/test_documents_e2e.py
+用法：cd mingjing-intake && .venv/Scripts/python.exe tests/test_documents_e2e.py
 覆盖：列表/权限/负例 → 生成（锚点合法性、联表 label、幂等重生成）→ 状态推进 →
       逐份签发（终态判定、残稿归档）→ 重复签发/已签发重生成/C2 守卫 → reject 链路。
 测试后自动清理：删除测试产生的文书与注解、按快照恢复案件状态、清测试期时间线。
@@ -10,7 +10,6 @@ import sys
 import io
 from datetime import datetime
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.path.insert(0, ".")
 
 import pymysql
@@ -286,6 +285,7 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     try:
         main()
     finally:

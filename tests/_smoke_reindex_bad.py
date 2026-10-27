@@ -8,7 +8,7 @@ state["skipped"] 按行计 1；Chroma 里毒块未写入、父块/正常块已�
 前置：本地库 case_ref 无 vector_synced=0 行（当前 4826 全为 1）——只有
 本脚本插入的 3 行临时案例会被处理，向量化被 mock，零 token、零残留。
 
-跑法：.venv/Scripts/python.exe scripts/_smoke_reindex_bad.py
+跑法：.venv/Scripts/python.exe tests/_smoke_reindex_bad.py
 """
 import sys
 from pathlib import Path

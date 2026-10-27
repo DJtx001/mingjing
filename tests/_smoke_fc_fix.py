@@ -9,7 +9,7 @@ mock 掉检索 / LLM provider / 会话层，直接驱动 assist._sse_stream 覆�
   ⑤ 有材料+正则+不调工具 → 材料正常回答，不被兜底吞掉    【bug B 回归点】
   ⑥ 有材料+无正则       → 材料正常回答（不尝试 FC）
 
-跑法（项目根）：.venv/Scripts/python.exe scripts/_smoke_fc_fix.py
+跑法（项目根）：.venv/Scripts/python.exe tests/_smoke_fc_fix.py
 """
 import sys
 from pathlib import Path

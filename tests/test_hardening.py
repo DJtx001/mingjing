@@ -152,8 +152,8 @@ def test_scripts_no_secrets():
     import pathlib
     root = pathlib.Path(__file__).resolve().parent.parent
     bad = []
-    for p in root.joinpath("scripts").rglob("*.py"):
-        if "_scratch" in p.parts or p.name in ("_smoke_hardening.py", "test_hardening.py"):
+    for p in list(root.joinpath("scripts").rglob("*.py")) + list(root.joinpath("tests").rglob("*.py")):
+        if "_scratch" in p.parts or p.name in ("test_hardening.py",):
             continue
         txt = p.read_text(encoding="utf-8", errors="ignore")
         if "39.107.157.0" in txt:
@@ -199,12 +199,12 @@ def test_user_table_collation_matches_assist():
 def test_script_safety_guards():
     """审查发现的脚本安全门：无悬空变量、清库需显式确认、重写评测集先备份。"""
     import pathlib
-    d = pathlib.Path(__file__).resolve().parent.parent / "scripts"
-    sess = (d / "_verify_http_session_order.py").read_text(encoding="utf-8")
+    root = pathlib.Path(__file__).resolve().parent.parent
+    sess = (root / "tests" / "_verify_http_session_order.py").read_text(encoding="utf-8")
     assert "CLEARED" not in sess, "会话顺序脚本仍引用已删除的 CLEARED"
-    oss = (d / "import_oss_kb.py").read_text(encoding="utf-8")
+    oss = (root / "scripts" / "import_oss_kb.py").read_text(encoding="utf-8")
     assert "CONFIRM_PURGE" in oss, "OSS 补库脚本缺少清库确认门"
-    fix = (d / "_fix_labels.py").read_text(encoding="utf-8")
+    fix = (root / "scripts" / "_fix_labels.py").read_text(encoding="utf-8")
     assert ".bak" in fix, "评测集重写脚本缺少备份"
 
 
@@ -213,11 +213,14 @@ def test_scripts_no_plaintext_password():
     import pathlib
     import re
 
-    d = pathlib.Path(__file__).resolve().parent.parent / "scripts"
+    root = pathlib.Path(__file__).resolve().parent.parent
     pat = re.compile(r"""(?i)\b(password|passwd|pwd)\s*=\s*["'][^"']+["']""")
     bad = []
-    for p in list(d.rglob("*.py")) + list(d.rglob("*.json")) + list(d.rglob("*.txt")):
-        if "_scratch" in p.parts or p.name in ("_smoke_hardening.py", "test_hardening.py"):
+    files = []
+    for d in (root / "scripts", root / "tests"):
+        files += [p for pat_ext in ("*.py", "*.json", "*.txt") for p in d.rglob(pat_ext)]
+    for p in files:
+        if "_scratch" in p.parts or p.name == "test_hardening.py":
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
             if pat.search(line):

@@ -1,4 +1,4 @@
-"""性能优化回归断言。用法：.venv/Scripts/python.exe scripts/_perf_check.py [关键字]"""
+"""性能优化回归断言。用法：.venv/Scripts/python.exe tests/_perf_check.py [关键字]"""
 import pathlib
 import sys
 import time

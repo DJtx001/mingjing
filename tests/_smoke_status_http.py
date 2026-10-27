@@ -1,6 +1,6 @@
 """真实 HTTP 验证：SSE 首帧时延 + 状态事件 + 问候短路。
 
-用法：后端在 8000 运行；python scripts/_smoke_status_http.py
+用法：后端在 8000 运行；python tests/_smoke_status_http.py
 """
 import json
 import os

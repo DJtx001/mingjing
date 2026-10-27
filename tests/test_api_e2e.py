@@ -5,7 +5,7 @@
   统计：kb（与 SQL 对账）、assist（字段完整性）
   采纳回流：adopt 落两表 → 详情可见备注 → 清理
   案件感知：_load_case / _case_block / 无命中 SSE 输出（不调 LLM，零成本）
-用法：python scripts/test_api_e2e.py（需后端在 8000 运行）
+用法：python tests/test_api_e2e.py（需后端在 8000 运行）
 """
 import json
 import sys
