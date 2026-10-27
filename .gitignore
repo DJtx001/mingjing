@@ -19,9 +19,15 @@ frontend/dist/
 # 本地 AI 工具配置
 .claude/
 
-# 临时资源与脚本（非项目产物）
-scripts/
+# 临时资源（非项目产物）
 erro/
+
+# scripts 纳入版本控制；只忽略一次性探针与生成物
+scripts/_scratch/
+scripts/_shots/
+scripts/_chroma_test/
+scripts/__pycache__/
+scripts/*.npz
 
 # 向量库（派生数据，可由 reindex 重建）
 Chromadb/
