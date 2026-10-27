@@ -14,6 +14,7 @@ import uuid
 import pymysql
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.llm.provider import provider
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ DEFAULT_EXTRACT_PROMPT = """你是人民调解受理系统的要素抽取助手�
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    return get_conn(pymysql.cursors.DictCursor)
 
 
 # ---------- 配置读取（知识库优先，内置兜底） ----------

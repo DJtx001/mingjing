@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import assert_case_writer, get_current_user
 from app.services import intake_service
 
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS case_status_history (
 
 
 def init_tables():
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             for stmt in DDL.strip().split(";"):
@@ -91,7 +92,7 @@ def init_tables():
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    return get_conn(pymysql.cursors.DictCursor)
 
 
 # ---------- 请求模型 ----------

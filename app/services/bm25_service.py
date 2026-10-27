@@ -8,6 +8,7 @@ import pymysql
 from rank_bm25 import BM25Okapi
 
 from app.core.config import config
+from app.core.db import get_conn
 
 
 class BM25Service:
@@ -29,7 +30,7 @@ class BM25Service:
 
     def _load(self):
         """在后台线程中全量加载建索引。"""
-        conn = pymysql.connect(**config.MYSQL)
+        conn = get_conn()
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, source, chapter, article, text FROM law")

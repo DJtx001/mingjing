@@ -32,6 +32,7 @@ import pymysql
 from mcp.server.mcpserver import MCPServer
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.services.retrieval_service import retrieve
 
 server = MCPServer(
@@ -45,7 +46,7 @@ server = MCPServer(
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL)
+    return get_conn()
 
 
 # ── 工具函数 ──────────────────────────────────────────────

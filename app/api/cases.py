@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import get_current_user
 from app.services import intake_service
 
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS case_note (
 
 
 def init_tables():
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             for stmt in DDL.strip().split(";"):
@@ -105,7 +106,7 @@ _SEED_CASES = [
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL)
+    return get_conn()
 
 
 def _seed_if_empty():

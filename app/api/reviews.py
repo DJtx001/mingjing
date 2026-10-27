@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.api.cases import _STATUS_LABEL, _TRIAGE
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import get_current_user, require_reviewer
 from app.services import audit_service, review_service
 
@@ -49,7 +50,7 @@ CREATE TABLE IF NOT EXISTS review_decision (
 
 
 def init_tables():
-    conn = pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    conn = get_conn(pymysql.cursors.DictCursor)
     try:
         with conn.cursor() as cur:
             for stmt in DDL.strip().split(";"):
@@ -58,7 +59,7 @@ def init_tables():
     finally:
         conn.close()
     # 存量兜底：已分流但从未入队的案件补入队（幂等：同案有 pending 则只更新摘要）
-    conn = pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    conn = get_conn(pymysql.cursors.DictCursor)
     try:
         with conn.cursor() as cur:
             cur.execute(

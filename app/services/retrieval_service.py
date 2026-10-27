@@ -3,9 +3,21 @@
 混合召回 = 向量语义 + BM25 全文，RRF 融合排序。
 意图门控：案例侧无实质命中且法条侧距离超阈 → 判非领域查询，整体拒绝（不产出引用）。
 """
+import functools
+
 from app.llm.embedding import embed_texts
 from app.services import vector_service
 from app.services.bm25_service import get_bm25_service
+
+
+@functools.lru_cache(maxsize=500)
+def _embed_query_cached(query: str) -> tuple:
+    """查询向量进程内缓存：同一问题重复提问省一次 embedding API 往返（约 0.5s）。
+
+    只缓存查询向量，不缓存最终材料——检索结果仍每次实时计算。
+    返回 tuple 以便 lru_cache 缓存；调用方用 list() 转回。
+    """
+    return tuple(embed_texts([query])[0])
 
 MAX_DISTANCE = 0.42   # cosine 距离阈值：实测真相关 ≤0.39、无关 ≥0.57。
                       # 收到 0.42（留 0.03 边际）——0.42~0.45 的"勉强命中"多为弱相关，
@@ -55,14 +67,14 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
 
     返回 {"laws", "cases", "intent_rejected"}；被意图门控拒绝时两列表为空。
     """
-    qv = embed_texts([query])[0]
+    qv = list(_embed_query_cached(query))
     bm25 = get_bm25_service()
     laws_col = vector_service.get_collection(vector_service.LAWS_COLLECTION)
     cases_col = vector_service.get_collection(vector_service.CASES_COLLECTION)
 
     # ———— 法条：向量候选（law_min 记录含阈值外的最近距离，意图门控用） ————
     v_laws, law_min = [], None
-    if top_laws and laws_col.count():
+    if top_laws and vector_service.count_cached(vector_service.LAWS_COLLECTION):
         r = laws_col.query(query_embeddings=[qv], n_results=top_laws * 2)
         law_min = min(r["distances"][0])
         for doc, meta, dist in zip(r["documents"][0], r["metadatas"][0], r["distances"][0]):
@@ -74,7 +86,7 @@ def retrieve(query: str, top_laws: int = 4, top_cases: int = 3) -> dict:
 
     # ———— 案例：向量候选（case_pass 按阈值内命中数原始计数，去重前） ————
     v_cases, seen, case_pass = [], set(), None
-    if top_cases and cases_col.count():
+    if top_cases and vector_service.count_cached(vector_service.CASES_COLLECTION):
         r = cases_col.query(query_embeddings=[qv], n_results=top_cases * 3,
                             where={"chunk_type": "child"})
         case_pass = sum(1 for d in r["distances"][0] if d <= MAX_DISTANCE)

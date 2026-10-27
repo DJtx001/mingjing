@@ -56,15 +56,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
-import CaseListView from './views/CaseListView.vue'
-import NewCaseView from './views/NewCaseView.vue'
-import KnowledgeBaseView from './views/KnowledgeBaseView.vue'
-import DocumentView from './views/DocumentView.vue'
-import ReviewView from './views/ReviewView.vue'
-import OperationLogView from './views/OperationLogView.vue'
-import StatsView from './views/StatsView.vue'
-import AiAssistantDrawer from './components/AiAssistantDrawer.vue'
+import { ref, computed, onMounted, nextTick, defineAsyncComponent } from 'vue'
+// 路由级 code-split：除登录页外全部按需加载，ECharts 随统计页进入独立 chunk
+const CaseListView = defineAsyncComponent(() => import('./views/CaseListView.vue'))
+const NewCaseView = defineAsyncComponent(() => import('./views/NewCaseView.vue'))
+const KnowledgeBaseView = defineAsyncComponent(() => import('./views/KnowledgeBaseView.vue'))
+const DocumentView = defineAsyncComponent(() => import('./views/DocumentView.vue'))
+const ReviewView = defineAsyncComponent(() => import('./views/ReviewView.vue'))
+const OperationLogView = defineAsyncComponent(() => import('./views/OperationLogView.vue'))
+const StatsView = defineAsyncComponent(() => import('./views/StatsView.vue'))
+const AiAssistantDrawer = defineAsyncComponent(() => import('./components/AiAssistantDrawer.vue'))
 import LoginView from './views/LoginView.vue'
 import { login as apiLogin, fetchMe, logout as apiLogout, getCachedUser } from './api/auth.js'
 

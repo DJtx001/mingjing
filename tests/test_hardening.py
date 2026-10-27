@@ -175,6 +175,8 @@ def test_user_table_collation_matches_assist():
     c.commit(); c.close()
 
     orig = m["database"]
+    from app.core import db as dbmod
+    dbmod.reset_pool()          # 池里可能连着旧库；切库前清空，否则建表建到旧库
     m["database"] = "mingjing_test"
     try:
         from app.api import assist, auth
@@ -189,6 +191,7 @@ def test_user_table_collation_matches_assist():
         c.close()
     finally:
         m["database"] = orig
+        dbmod.reset_pool()
         c = pymysql.connect(**config.MYSQL)
         c.cursor().execute("DROP DATABASE IF EXISTS mingjing_test"); c.commit(); c.close()
 

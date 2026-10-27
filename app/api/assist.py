@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.core.db import get_conn
 from app.core.deps import assert_case_writer, get_current_user
 from app.api.cases import _STATUS_LABEL as _STATUS_CN   # 状态中文映射（案件全貌卡片用）
 from app.llm.provider import provider
@@ -103,7 +104,7 @@ def _exec_db_tool(name: str, args: dict) -> tuple[str, list]:
     """
     import pymysql
     from app.core.config import config
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             if name == "search_cases":
@@ -254,7 +255,7 @@ CREATE TABLE IF NOT EXISTS assist_adoption (
 def init_tables():
     import pymysql
     from app.core.config import config
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             for stmt in ASSIST_DDL.strip().split(";"):
@@ -282,7 +283,7 @@ def _load_case(case_id: Optional[str]) -> Optional[dict]:
     if not case_id:
         return None
     from app.api.cases import _STATUS_LABEL, _TRIAGE
-    from app.core.db import MySQLClient
+    from app.core.db import MySQLClient, get_conn
     db = MySQLClient()
     try:
         rows = db.execute(

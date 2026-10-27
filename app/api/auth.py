@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 import pymysql
 
 from app.core.config import config
-from app.core.db import MySQLClient
+from app.core.db import MySQLClient, get_conn
 from app.core.deps import get_current_user
 from app.core.security import verify_password, create_access_token
 from app.schemas.auth import LoginRequest, LoginResponse, UserInfo
@@ -107,7 +107,7 @@ def init_tables():
 
     必须在 assist.init_tables() 之前调用——assist 表有外键引用 user。
     """
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(_DDL_USER)

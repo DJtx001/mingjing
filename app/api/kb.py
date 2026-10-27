@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Any, Optional
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import get_current_user, require_admin
 from app.services.oss_service import (
     upload_file as oss_upload,
@@ -28,7 +29,7 @@ def _ip(request: Request) -> str:
 def _conn():
     """每次请求新建连接，用完即关，避免长连接被 MySQL wait_timeout 掐断"""
     import pymysql
-    return pymysql.connect(**config.MYSQL)
+    return get_conn()
 
 
 # ---------- 表结构（幂等创建：规则/Schema/提示词配置表 + 知识库结构化表） ----------

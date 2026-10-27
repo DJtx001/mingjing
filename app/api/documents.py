@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core.db import get_conn
 from app.core.deps import assert_case_writer, get_current_user
 from app.services import audit_service, document_service
 from app.services.document_service import DocumentError
@@ -56,9 +57,7 @@ CREATE TABLE IF NOT EXISTS document_annotation (
 
 
 def init_tables():
-    import pymysql
-    from app.core.config import config
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             for stmt in DDL.strip().split(";"):

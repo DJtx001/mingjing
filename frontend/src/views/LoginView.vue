@@ -91,7 +91,7 @@ async function handleLogin() {
   padding-right: clamp(12px, 1.5vw, 30px);  /* 卡片再次贴右 */
   /* 天平背景图：恢复全屏铺满（cover），焦点保留微偏左 */
   background:
-    url('../assets/login-bg.jpg') 55% center / cover no-repeat,
+    url('../assets/login-bg.webp') 55% center / cover no-repeat,
     linear-gradient(135deg, #0e1c38 0%, #1d3a6e 55%, #2b5fad 100%);
   position: relative;
   overflow: hidden;

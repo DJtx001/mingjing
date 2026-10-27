@@ -16,6 +16,7 @@ from datetime import datetime
 import pymysql
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.id_gen import gen_doc_id
 from app.llm.provider import provider
 from app.services import intake_service, retrieval_service
@@ -62,7 +63,7 @@ class DocumentError(Exception):
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    return get_conn(pymysql.cursors.DictCursor)
 
 
 def _fmt_d(v) -> str:

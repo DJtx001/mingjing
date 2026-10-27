@@ -11,6 +11,7 @@ import logging
 import pymysql
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.services import intake_service, retrieval_service
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ _DECISION_STATUS = {"pass": "auto_passed", "supplement": "awaiting_confirmation"
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    return get_conn(pymysql.cursors.DictCursor)
 
 
 # ---------- 入队（幂等） ----------

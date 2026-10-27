@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.api.cases import _STATUS_LABEL
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import assert_case_writer, get_current_user
 from app.services import audit_service, document_service
 from app.services.document_service import DocumentError, TYPE_LABEL
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS mediation_result (
 
 
 def init_tables():
-    conn = pymysql.connect(**config.MYSQL)
+    conn = get_conn()
     try:
         with conn.cursor() as cur:
             for stmt in DDL.strip().split(";"):
@@ -49,7 +50,7 @@ def init_tables():
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL, cursorclass=pymysql.cursors.DictCursor)
+    return get_conn(pymysql.cursors.DictCursor)
 
 
 def _ip(request: Request) -> str:

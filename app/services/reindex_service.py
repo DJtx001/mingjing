@@ -8,6 +8,7 @@ import threading
 import pymysql
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.llm.embedding import embed_texts
 from app.services import vector_service
 
@@ -20,7 +21,7 @@ _SECTION_NAMES = {"fact": "基本案情", "process": "诉讼请求", "result": "
 
 
 def _conn():
-    return pymysql.connect(**config.MYSQL)
+    return get_conn()
 
 
 def start(task_id: str) -> None:

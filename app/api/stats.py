@@ -5,23 +5,33 @@ MVP 只做有真实数据源的维度：知识库存量 + AI 助手使用分析�
 所有登录用户可查看（受理员/复核员同样需要运营数据）。
 """
 import json
+import time
 
 import pymysql
 from fastapi import APIRouter, Depends
 
 from app.core.config import config
+from app.core.db import get_conn
 from app.core.deps import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["I-统计"])
 
+# /stats/kb 在 5.9 万行 law 上做 GROUP BY，实测约 60~70ms；30s 结果缓存
+_KB_CACHE: dict = {"data": None, "ts": 0.0}
+_KB_TTL = 30.0
+
 
 def _conn():
-    return pymysql.connect(**config.MYSQL)
+    return get_conn()
 
 
 @router.get("/kb")
 def kb_stats(user=Depends(get_current_user)):
     """知识库维度：条数 / 文件数 / 灌库覆盖 / 法律部门分布。"""
+    now = time.time()
+    if _KB_CACHE["data"] is not None and now - _KB_CACHE["ts"] < _KB_TTL:
+        return _KB_CACHE["data"]
+
     conn = _conn()
     try:
         with conn.cursor() as cur:
@@ -37,7 +47,7 @@ def kb_stats(user=Depends(get_current_user)):
                 "SELECT COALESCE(category, '未分类') AS c, COUNT(*) AS n"
                 " FROM law GROUP BY c ORDER BY n DESC")
             categories = [{"name": r[0], "count": r[1]} for r in cur.fetchall()]
-        return {
+        payload = {
             "laws": laws, "cases": cases,
             "synced": sync.get(1, 0), "pending": sync.get(0, 0), "skipped": sync.get(2, 0),
             "case_synced": csync.get(1, 0), "case_pending": csync.get(0, 0),
@@ -46,6 +56,10 @@ def kb_stats(user=Depends(get_current_user)):
         }
     finally:
         conn.close()
+
+    _KB_CACHE["data"] = payload
+    _KB_CACHE["ts"] = now
+    return payload
 
 
 @router.get("/assist")
