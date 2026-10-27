@@ -190,8 +190,8 @@ def list_rules(user=Depends(get_current_user)):
 
 
 @router.put("/rules")
-def update_rule(body: RuleUpdate, request: Request, user=Depends(get_current_user)):
-    """规则启停/修改：对所有登录用户开放（区别于删除/保存类操作的 require_admin）。
+def update_rule(body: RuleUpdate, request: Request, user=Depends(require_admin)):
+    """规则启停/修改：仅管理员（与删除/保存类操作一致）。
 
     操作人仍会记入审计日志（audit_log.rule_update）。
     """

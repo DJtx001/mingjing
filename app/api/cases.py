@@ -2,6 +2,7 @@
 列表字段：case_id/dispute_type/applicant_name/current_step/status/status_label/assignee
 """
 import json
+import os
 import random
 
 import pymysql
@@ -108,6 +109,9 @@ def _conn():
 
 
 def _seed_if_empty():
+    # 默认关闭：仅演示环境显式设置 DEMO_SEED=1 才播种虚构案件
+    if os.getenv("DEMO_SEED") != "1":
+        return
     conn = _conn()
     try:
         with conn.cursor() as cur:

@@ -126,7 +126,8 @@
           <el-table-column label="启用" width="100">
             <template #default="{ row }">
               <!-- 停用前二次确认（before-change 返回 Promise）；启用直接生效。API 统一在 change 里调 -->
-              <el-switch v-model="row.enabled" :before-change="() => beforeSwitchChange(row)"
+              <el-switch v-model="row.enabled" :disabled="!isAdmin"
+                         :before-change="() => beforeSwitchChange(row)"
                          @change="onSwitchChange(row)" />
             </template>
           </el-table-column>
@@ -231,13 +232,13 @@ import {
 
 const tab = ref('laws')
 
-// 权限：删除文件 / 保存 Schema / 保存提示词 仅 admin（后端 require_admin 强校验）；
-// 规则启停对所有人开放（后端 get_current_user 校验）。这里只是交互层拦截。
+// 权限：规则启停 / 删除文件 / 保存 Schema / 保存提示词 均仅 admin（后端 require_admin 强校验）。
+// 这里只是交互层拦截。
 const isAdmin = (getUser()?.role) === 'admin'
 
 function guardAdmin() {
   if (isAdmin) return true
-  ElMessage.error('你没有权限，请联系管理员 3112028466@qq.com')
+  ElMessage.error('你没有权限，请联系系统管理员')
   return false
 }
 
@@ -525,6 +526,7 @@ async function loadRules() {
 // 停用前二次确认（即将从开→关）；启用（关→开）直接放行
 // 返回 Promise<boolean>：true 允许切换，false 弹回
 function beforeSwitchChange(row) {
+  if (!guardAdmin()) return false
   if (!row.enabled) return true
   return ElMessageBox.confirm(
     '停用该规则会影响核验召回，确定停用？',

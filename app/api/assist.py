@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.core.deps import get_current_user
+from app.core.deps import assert_case_writer, get_current_user
 from app.api.cases import _STATUS_LABEL as _STATUS_CN   # 状态中文映射（案件全貌卡片用）
 from app.llm.provider import provider
 from app.services import retrieval_service, session_service
@@ -605,6 +605,7 @@ async def adopt(body: AdoptRequest, user: dict = Depends(get_current_user)):
     （案件详情可见）。target=similar_case_doc 的采纳还会在案件「类案参考」文书
     生成时合并进正文（生成后 target_doc_id 回写为 doc_id；备注落点始终保留）。
     """
+    assert_case_writer(body.case_id, user)
     from app.core.db import MySQLClient
     db = MySQLClient()
     try:

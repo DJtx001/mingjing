@@ -42,7 +42,7 @@
           </el-form-item>
         </el-form>
 
-        <div class="demo-tip">演示账号：lisi 密码：123456（普通用户，对知识库的权限仅查看与上传）如有问题联系管理员3112028466@qq.com</div>
+        <div class="demo-tip">演示账号：lisi 密码：123456（普通用户，对知识库的权限仅查看与上传）如有问题请联系系统管理员</div>
       </div>
     </div>
   </div>

@@ -5,6 +5,8 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+import pymysql
+
 from app.core.config import config
 from app.core.db import MySQLClient
 from app.core.deps import get_current_user
@@ -72,4 +74,53 @@ def _query_user_by_username(username: str) -> dict | None:
         return rows[0] if rows else None
     finally:
         db.close()
+
+
+# ---------- 用户表（幂等建表 + 空库种子账号） ----------
+_DDL_USER = """
+CREATE TABLE IF NOT EXISTS user (
+  user_id VARCHAR(16) PRIMARY KEY COMMENT '用户ID，如 u_001',
+  username VARCHAR(32) NOT NULL UNIQUE COMMENT '登录账号',
+  password_hash VARCHAR(128) NOT NULL COMMENT 'bcrypt 哈希',
+  name VARCHAR(32) NOT NULL COMMENT '姓名',
+  role ENUM('intake_clerk','reviewer','admin') NOT NULL COMMENT '角色',
+  org VARCHAR(64) DEFAULT NULL COMMENT '所属机构',
+  status ENUM('active','disabled') DEFAULT 'active' COMMENT '账号状态',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) DEFAULT CHARSET=utf8mb4 COMMENT='系统用户'
+"""
+
+# 演示种子账号（仅空表时写入；密码统一 123456，生产必改）
+_USER_SEED = [
+    ("u_001", "zhangming", "张明", "intake_clerk"),
+    ("u_002", "admin", "系统管理员", "admin"),
+    ("u_003", "lisi", "李四", "intake_clerk"),
+    ("u_004", "wangwu", "王五", "reviewer"),
+    ("u_005", "zhaoliu", "赵六", "intake_clerk"),
+    ("u_006", "sunqi", "孙七", "intake_clerk"),
+]
+
+
+def init_tables():
+    """幂等建 user 表；表为空时写入 6 个演示账号。
+
+    必须在 assist.init_tables() 之前调用——assist 表有外键引用 user。
+    """
+    conn = pymysql.connect(**config.MYSQL)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_DDL_USER)
+            cur.execute("SELECT COUNT(*) FROM user")
+            if cur.fetchone()[0] == 0:
+                from app.core.security import hash_password
+                pwd = hash_password("123456")
+                cur.executemany(
+                    "INSERT INTO user (user_id, username, password_hash, name, role)"
+                    " VALUES (%s,%s,%s,%s,%s)",
+                    [(uid, uname, pwd, name, role) for uid, uname, name, role in _USER_SEED],
+                )
+        conn.commit()
+    finally:
+        conn.close()
 

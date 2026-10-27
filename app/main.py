@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 
 from app.api import cases, assist, auth, intake, kb, logs, stats, documents, reviews, mediation
+from app.core.config import config
 
 logger = logging.getLogger("warmup")
 
@@ -118,10 +119,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"error": {"code": "ERR", "message": str(exc.detail)}},
     )
 
+_origins = config.CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials=bool(_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -174,6 +176,12 @@ app.include_router(assist.router)
 app.include_router(kb.router)
 app.include_router(logs.router)
 app.include_router(stats.router)
+
+# 用户表幂等建表（必须最先：assist 表有外键引用 user）
+try:
+    auth.init_tables()
+except Exception as _e:
+    logger.warning("user 建表失败: %s", _e)
 
 # 知识库配置表幂等建表（kb_rule/kb_schema/kb_prompt；法条/案例走 OSS+Chroma，不建表）
 try:

@@ -5,6 +5,7 @@ FastAPI 会在接口执行前自动解析，失败直接返回 401，接口代�
 """
 from fastapi import Depends, Header, HTTPException
 
+from app.core.db import MySQLClient
 from app.core.security import decode_access_token
 
 
@@ -42,7 +43,7 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
     """
     if user.get("role") != "admin":
         raise HTTPException(status_code=403,
-                            detail={"code": "AUTHZ_002", "message": "你没有权限，请联系管理员 3112028466@qq.com"})
+                            detail={"code": "AUTHZ_002", "message": "你没有权限，请联系系统管理员"})
     return user
 
 
@@ -53,5 +54,29 @@ def require_reviewer(user: dict = Depends(get_current_user)) -> dict:
     """
     if user.get("role") not in ("reviewer", "admin"):
         raise HTTPException(status_code=403,
-                            detail={"code": "AUTHZ_002", "message": "你没有复核权限，请联系管理员 3112028466@qq.com"})
+                            detail={"code": "AUTHZ_002", "message": "你没有复核权限，请联系系统管理员"})
     return user
+
+
+def assert_case_writer(case_id: str, user: dict) -> None:
+    """案件写权限：admin 直通；其他人必须是该案承办人。
+
+    读接口不调用本函数（案件可读全员）；写接口在业务处理前调用。
+    案件不存在抛 404，非承办人抛 403。
+    """
+    if user.get("role") == "admin":
+        return
+
+    db = MySQLClient()
+    try:
+        rows = db.execute("SELECT assignee_user_id FROM case_info WHERE case_id=%s", (case_id,))
+    finally:
+        db.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="案件不存在")
+    if rows[0]["assignee_user_id"] != user.get("user_id"):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "AUTHZ_002", "message": "你不是该案件承办人，无权修改"},
+        )

@@ -40,6 +40,9 @@ class Config:
         "decode_responses": True,   # 自动 bytes→str
     }
 
+    # 允许的跨域来源（逗号分隔，默认空=不开放跨域；同源访问与 Vite 代理不受影响）
+    CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
     # 阿里云 OSS（对象存储：法条原文备份、附件、导出文书）
     OSS = {
         "access_key_id": os.getenv("OSS_ACCESS_KEY_ID", ""),

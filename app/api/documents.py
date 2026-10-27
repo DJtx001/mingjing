@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.core.deps import get_current_user
+from app.core.deps import assert_case_writer, get_current_user
 from app.services import audit_service, document_service
 from app.services.document_service import DocumentError
 
@@ -103,6 +103,7 @@ def get_document(case_id: str, doc_id: str, user=Depends(get_current_user)):
 def generate_documents(case_id: str, body: GenerateReq, request: Request,
                        user=Depends(get_current_user)):
     """F6 生成/重生成文书。draft 覆盖、issued 跳过；单类失败不整单失败。"""
+    assert_case_writer(case_id, user)
     try:
         result = document_service.generate(case_id, body.types, user["user_id"])
     except DocumentError as e:
@@ -120,6 +121,7 @@ def issue_document(case_id: str, doc_id: str, request: Request,
                    user=Depends(get_current_user)):
     """F7 签发（人工介入③，不可逆）。登记表单独签发或四类全签 → 案件 issued；
     通知书签发 → rejected 终态。已签发重复调用返回 409 DOC_004。"""
+    assert_case_writer(case_id, user)
     try:
         result = document_service.issue(case_id, doc_id, user["user_id"])
     except DocumentError as e:

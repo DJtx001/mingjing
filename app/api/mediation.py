@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.api.cases import _STATUS_LABEL
 from app.core.config import config
-from app.core.deps import get_current_user
+from app.core.deps import assert_case_writer, get_current_user
 from app.services import audit_service, document_service
 from app.services.document_service import DocumentError, TYPE_LABEL
 
@@ -164,6 +164,7 @@ def get_mediation_result(case_id: str, user=Depends(get_current_user)):
 def save_mediation_result(case_id: str, body: MediationSave, request: Request,
                           user=Depends(get_current_user)):
     """G2 录入结果（即时校验 + 落快照 + 生成协议书/终结书草案）。仅「已签发」案件可录。"""
+    assert_case_writer(case_id, user)
     errors = _validate(body)
     if errors:
         raise HTTPException(422, {"code": "MED_001", "message": "；".join(errors)})
@@ -226,6 +227,7 @@ def save_mediation_result(case_id: str, body: MediationSave, request: Request,
 @router.post("/cases/{case_id}/agreement/issue")
 def issue_agreement(case_id: str, request: Request, user=Depends(get_current_user)):
     """G3 签发结案（不可逆）：协议书/终结书签发 → closed；返回司法确认 30 日期限。"""
+    assert_case_writer(case_id, user)
     conn = _conn()
     try:
         with conn.cursor() as cur:

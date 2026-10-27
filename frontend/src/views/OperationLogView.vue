@@ -2,7 +2,7 @@
   <!-- 非管理员：菜单可见、进页即提示权限不足（后端接口同样强校验，数据拿不到） -->
   <div v-if="!isAdmin" class="log-page denied">
     <div class="denied-icon">🔒</div>
-    <p class="denied-text">你没有权限，请联系管理员 3112028466@qq.com</p>
+    <p class="denied-text">你没有权限，请联系系统管理员</p>
   </div>
 
   <div v-else class="log-page">

@@ -166,16 +166,18 @@ def create_session(user_id: str, case_id: str | None = None) -> str:
     MySQL 失败不阻塞，只记日志。
     """
     session_id = gen_session_id()
-    r = get_redis()
-    now = _now_str()
-    # 1. 写 Redis（热路径）
-    r.hset(_sess_key(session_id), mapping={
-        "user_id": user_id,
-        "case_id": case_id or "",
-        "updated_at": now,
-    })
-    r.expire(_sess_key(session_id), _SESSION_TTL)
-    _touch_user_index(user_id, session_id)
+    # 1. 写 Redis（热路径），失败只记日志：MySQL 是真相源
+    try:
+        r = get_redis()
+        r.hset(_sess_key(session_id), mapping={
+            "user_id": user_id,
+            "case_id": case_id or "",
+            "updated_at": _now_str(),
+        })
+        r.expire(_sess_key(session_id), _SESSION_TTL)
+        _touch_user_index(user_id, session_id)
+    except Exception as e:
+        logger.warning("Redis 不可用，跳过会话热缓存 user_id=%s: %s", user_id, e)
 
     # 2. 写 MySQL（真相源），失败只记日志
     try:
@@ -264,16 +266,19 @@ def append_message(session_id: str, role: str, content: str,
     if citations is not None:
         msg["citations"] = citations
 
-    r = get_redis()
-    # 1. 写 Redis（热路径）
-    r.lpush(_msgs_key(session_id), json.dumps(msg, ensure_ascii=False))
-    r.ltrim(_msgs_key(session_id), 0, _MAX_MESSAGES - 1)
-    r.expire(_msgs_key(session_id), _SESSION_TTL)
-    r.expire(_sess_key(session_id), _SESSION_TTL)
-    r.hset(_sess_key(session_id), "updated_at", _now_str())
-    meta = get_session(session_id)
-    if meta:
-        _touch_user_index(meta["user_id"], session_id)
+    # 1. 写 Redis（热路径），失败只记日志：MySQL 是真相源
+    try:
+        r = get_redis()
+        r.lpush(_msgs_key(session_id), json.dumps(msg, ensure_ascii=False))
+        r.ltrim(_msgs_key(session_id), 0, _MAX_MESSAGES - 1)
+        r.expire(_msgs_key(session_id), _SESSION_TTL)
+        r.expire(_sess_key(session_id), _SESSION_TTL)
+        r.hset(_sess_key(session_id), "updated_at", _now_str())
+        meta = get_session(session_id)
+        if meta:
+            _touch_user_index(meta["user_id"], session_id)
+    except Exception as e:
+        logger.warning("Redis 不可用，跳过消息热缓存 session_id=%s: %s", session_id, e)
 
     # 2. 写 MySQL（真相源），失败只记日志
     try:

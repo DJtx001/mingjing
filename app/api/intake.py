@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import config
-from app.core.deps import get_current_user
+from app.core.deps import assert_case_writer, get_current_user
 from app.services import intake_service
 
 router = APIRouter(tags=["C/D-受理流程"])
@@ -131,6 +131,7 @@ def get_elements(case_id: str, user=Depends(get_current_user)):
 # ---------- C2 确认/修正（人工介入① → 自动触发核验） ----------
 @router.put("/cases/{case_id}/elements")
 def confirm_elements(case_id: str, body: ElementsConfirm, user=Depends(get_current_user)):
+    assert_case_writer(case_id, user)
     conn = _conn()
     try:
         stats = {"confirmed_count": 0, "modified_count": 0, "missing_count": 0}
@@ -182,6 +183,7 @@ def confirm_elements(case_id: str, body: ElementsConfirm, user=Depends(get_curre
 # ---------- 单要素补充询问话术（页面②按钮，LLM 生成给受理员） ----------
 @router.post("/cases/{case_id}/elements/{element_id}/clarify")
 def clarify(case_id: str, element_id: str, user=Depends(get_current_user)):
+    assert_case_writer(case_id, user)
     try:
         return intake_service.clarify_question(case_id, element_id)
     except ValueError as e:
