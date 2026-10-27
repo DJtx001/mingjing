@@ -1,4 +1,4 @@
-"""本轮加固的纯函数级回归断言。用法：.venv/Scripts/python.exe scripts/_smoke_hardening.py"""
+"""本轮加固的纯函数级回归断言。用法：.venv/Scripts/python.exe -m pytest tests/ -q"""
 import pathlib
 import sys
 import traceback
@@ -153,7 +153,7 @@ def test_scripts_no_secrets():
     root = pathlib.Path(__file__).resolve().parent.parent
     bad = []
     for p in root.joinpath("scripts").rglob("*.py"):
-        if "_scratch" in p.parts or p.name == "_smoke_hardening.py":
+        if "_scratch" in p.parts or p.name in ("_smoke_hardening.py", "test_hardening.py"):
             continue
         txt = p.read_text(encoding="utf-8", errors="ignore")
         if "39.107.157.0" in txt:
@@ -196,7 +196,7 @@ def test_user_table_collation_matches_assist():
 def test_script_safety_guards():
     """审查发现的脚本安全门：无悬空变量、清库需显式确认、重写评测集先备份。"""
     import pathlib
-    d = pathlib.Path(__file__).resolve().parent
+    d = pathlib.Path(__file__).resolve().parent.parent / "scripts"
     sess = (d / "_verify_http_session_order.py").read_text(encoding="utf-8")
     assert "CLEARED" not in sess, "会话顺序脚本仍引用已删除的 CLEARED"
     oss = (d / "import_oss_kb.py").read_text(encoding="utf-8")
@@ -210,44 +210,13 @@ def test_scripts_no_plaintext_password():
     import pathlib
     import re
 
-    d = pathlib.Path(__file__).resolve().parent
+    d = pathlib.Path(__file__).resolve().parent.parent / "scripts"
     pat = re.compile(r"""(?i)\b(password|passwd|pwd)\s*=\s*["'][^"']+["']""")
     bad = []
     for p in list(d.rglob("*.py")) + list(d.rglob("*.json")) + list(d.rglob("*.txt")):
-        if "_scratch" in p.parts or p.name == "_smoke_hardening.py":
+        if "_scratch" in p.parts or p.name in ("_smoke_hardening.py", "test_hardening.py"):
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
             if pat.search(line):
                 bad.append(f"{p.name}:{i}")
     assert bad == [], bad
-
-
-TESTS = [
-    test_assert_case_writer,
-    test_cors_reads_config,
-    test_redis_write_degrades,
-    test_user_table_and_seed,
-    test_demo_seed_off_by_default,
-    test_no_hardcoded_admin_email,
-    test_rules_admin_only,
-    test_scripts_no_secrets,
-    test_user_table_collation_matches_assist,
-    test_script_safety_guards,
-    test_scripts_no_plaintext_password,
-]
-
-
-if __name__ == "__main__":
-    only = sys.argv[1] if len(sys.argv) > 1 else ""
-    failed = 0
-    for t in TESTS:
-        if only and only not in t.__name__:
-            continue
-        try:
-            t()
-            print(f"PASS {t.__name__}")
-        except Exception:
-            failed += 1
-            print(f"FAIL {t.__name__}")
-            traceback.print_exc()
-    sys.exit(1 if failed else 0)
